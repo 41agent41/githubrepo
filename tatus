@@ -1,0 +1,3 @@
+[33mf92c6fe[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m Add TimescaleDB integration for high-performance time-series data streaming
+[33m76d0f92[m Filter out indicator columns from download page DataframeViewer - Only display core OHLCV data (timestamp, open, high, low, close, volume, wap, count) - Remove any technical indicator columns that might be included in API response
+[33m8044da7[m Fix TypeScript errors in download page - Add missing exchange and secType properties to HistoricalData interface - Use exchangeFilters for display instead of chartData properties - Resolves build compilation errors

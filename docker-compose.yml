@@ -1,0 +1,98 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      - PORT=${BACKEND_PORT:-4000}
+      - HOST=${BACKEND_HOST:-0.0.0.0}
+      - NODE_ENV=${NODE_ENV:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - IB_SERVICE_URL=http://172.20.0.10:8000
+      - POSTGRES_HOST=${POSTGRES_HOST:-localhost}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-tradingapp}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-tradingapp123}
+      - POSTGRES_DB=${POSTGRES_DB:-tradingapp}
+      - POSTGRES_SSL=${POSTGRES_SSL:-false}
+      - REDIS_HOST=172.20.0.30
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET:-changeme_jwt_secret}
+      - SESSION_SECRET=${SESSION_SECRET:-changeme_session_secret}
+    ports:
+      - "${BACKEND_PORT:-4000}:${BACKEND_PORT:-4000}"
+    depends_on:
+      - ib_service
+      - redis
+    networks:
+      tradingapp-network:
+        ipv4_address: 172.20.0.5
+    restart: unless-stopped
+      
+  frontend:
+    build: 
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        - NODE_ENV=${NODE_ENV:-production}
+    env_file: .env
+    environment:
+      - PORT=${FRONTEND_PORT:-3000}
+      - HOST=${FRONTEND_HOST:-0.0.0.0}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      - NODE_ENV=${NODE_ENV:-production}
+    ports:
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
+    depends_on:
+      - backend
+    networks:
+      tradingapp-network:
+        ipv4_address: 172.20.0.3
+    restart: unless-stopped
+      
+  ib_service:
+    build: ./ib_service
+    env_file: .env
+    environment:
+      - IB_HOST=${IB_HOST}
+      - IB_PORT=${IB_PORT:-4002}
+      - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+      - IB_TIMEOUT=${IB_TIMEOUT:-30}
+      - IB_CORS_ORIGINS=${IB_CORS_ORIGINS:-http://localhost:3000}
+      # Timezone configuration for consistent timestamp handling
+      - TZ=UTC
+      - IB_TIMEZONE=${IB_TIMEZONE:-UTC}
+      - EXPECTED_TIMESTAMP_FORMAT=${EXPECTED_TIMESTAMP_FORMAT:-unix_seconds}
+      - DATA_TIMEZONE=${DATA_TIMEZONE:-UTC}
+      - IB_DATE_FORMAT=${IB_DATE_FORMAT:-YYYYMMDD}
+      - IB_TIME_FORMAT=${IB_TIME_FORMAT:-HHMMSS}
+      - IB_FORMAT_DATE=${IB_FORMAT_DATE:-2}
+    ports:
+      - "${IB_SERVICE_PORT:-8000}:8000"
+    networks:
+      tradingapp-network:
+        ipv4_address: 172.20.0.10
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+      
+
+      
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      tradingapp-network:
+        ipv4_address: 172.20.0.30
+
+
+
+networks:
+  tradingapp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1 
