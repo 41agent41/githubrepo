@@ -1089,6 +1089,228 @@ router.get('/health', async (req: Request, res: Response) => {
   }
 });
 
+// Get latest historical data point for a symbol/timeframe
+router.get('/latest', async (req: Request, res: Response) => {
+  try {
+    const { symbol, timeframe, account_mode } = req.query as {
+      symbol: string;
+      timeframe: string;
+      account_mode?: string;
+    };
+
+    // Validate required parameters
+    if (!symbol || !timeframe) {
+      return res.status(400).json({
+        error: 'Missing required parameters',
+        required: ['symbol', 'timeframe'],
+        received: { symbol, timeframe, account_mode }
+      });
+    }
+
+    // Check if data querying is enabled
+    if (!isDataQueryEnabled(req)) {
+      return handleDisabledDataQuery(res, 'Latest data querying is disabled');
+    }
+
+    console.log(`Getting latest data point for ${symbol} ${timeframe}`);
+
+    // Get latest data from database
+    const latestData = await marketDataService.getLatestData(symbol, timeframe, 1);
+    
+    if (latestData.length === 0) {
+      return res.json({
+        symbol: symbol,
+        timeframe: timeframe,
+        latest_data: null,
+        message: 'No historical data found',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const latest = latestData[0];
+    
+    res.json({
+      symbol: symbol,
+      timeframe: timeframe,
+      latest_data: {
+        timestamp: latest.timestamp.toISOString(),
+        open: latest.open,
+        high: latest.high,
+        low: latest.low,
+        close: latest.close,
+        volume: latest.volume,
+        wap: latest.wap,
+        count: latest.count
+      },
+      source: 'database',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('Error getting latest data:', error);
+    
+    res.status(500).json({
+      error: 'Failed to get latest data',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Enhanced real-time streaming endpoint that continues from last historical point
+router.get('/stream', async (req: Request, res: Response) => {
+  try {
+    const { symbol, timeframe, account_mode } = req.query as {
+      symbol: string;
+      timeframe: string;
+      account_mode?: string;
+    };
+
+    // Validate required parameters
+    if (!symbol || !timeframe) {
+      return res.status(400).json({
+        error: 'Missing required parameters',
+        required: ['symbol', 'timeframe'],
+        received: { symbol, timeframe, account_mode }
+      });
+    }
+
+    // Check if data querying is enabled
+    if (!isDataQueryEnabled(req)) {
+      return handleDisabledDataQuery(res, 'Real-time streaming is disabled');
+    }
+
+    console.log(`Starting real-time stream for ${symbol} ${timeframe}`);
+
+    // Get latest historical data point
+    const latestData = await marketDataService.getLatestData(symbol, timeframe, 1);
+    const lastHistoricalTime = latestData.length > 0 ? latestData[0].timestamp : null;
+
+    // Get current real-time data
+    const realtimeResponse = await axios.get(`${IB_SERVICE_URL}/market-data/realtime`, {
+      params: {
+        symbol: symbol,
+        account_mode: account_mode
+      },
+      timeout: 10000
+    });
+
+    const realtimeData = realtimeResponse.data;
+    const currentTime = new Date();
+
+    // Calculate if we need to create a new bar or update existing one
+    let shouldCreateNewBar = false;
+    let shouldUpdateLastBar = false;
+
+    if (lastHistoricalTime) {
+      const timeDiff = currentTime.getTime() - lastHistoricalTime.getTime();
+      const timeframeMinutes = getTimeframeMinutes(timeframe);
+      const timeframeMs = timeframeMinutes * 60 * 1000;
+
+      // If we're in a new timeframe period, create new bar
+      if (timeDiff >= timeframeMs) {
+        shouldCreateNewBar = true;
+      } else {
+        // Update the last bar with current price
+        shouldUpdateLastBar = true;
+      }
+    } else {
+      // No historical data, create new bar
+      shouldCreateNewBar = true;
+    }
+
+    // Get or create contract for storing new data
+    const contractId = await marketDataService.getOrCreateContract({
+      symbol: symbol,
+      secType: 'STK',
+      exchange: 'NASDAQ',
+      currency: 'USD'
+    });
+
+    let newBarData = null;
+
+    if (shouldCreateNewBar || shouldUpdateLastBar) {
+      // Create new bar data
+      const barTimestamp = shouldCreateNewBar ? 
+        new Date(Math.floor(currentTime.getTime() / (getTimeframeMinutes(timeframe) * 60 * 1000)) * (getTimeframeMinutes(timeframe) * 60 * 1000)) :
+        lastHistoricalTime!;
+
+      const newBar = {
+        timestamp: barTimestamp,
+        open: shouldCreateNewBar ? realtimeData.last : latestData[0].open,
+        high: shouldCreateNewBar ? realtimeData.last : Math.max(latestData[0].high, realtimeData.last),
+        low: shouldCreateNewBar ? realtimeData.last : Math.min(latestData[0].low, realtimeData.last),
+        close: realtimeData.last,
+        volume: shouldCreateNewBar ? realtimeData.volume : latestData[0].volume + realtimeData.volume,
+        wap: realtimeData.last, // Use current price as WAP for simplicity
+        count: 1
+      };
+
+      // Store the new/updated bar
+      const storeResult = await marketDataService.storeCandlestickData(contractId, timeframe, [newBar]);
+      
+      newBarData = {
+        ...newBar,
+        timestamp: newBar.timestamp.toISOString(),
+        action: shouldCreateNewBar ? 'new_bar' : 'updated_bar',
+        store_result: storeResult
+      };
+    }
+
+    res.json({
+      symbol: symbol,
+      timeframe: timeframe,
+      realtime_data: realtimeData,
+      last_historical_time: lastHistoricalTime?.toISOString() || null,
+      current_time: currentTime.toISOString(),
+      new_bar_data: newBarData,
+      action: shouldCreateNewBar ? 'new_bar_created' : shouldUpdateLastBar ? 'last_bar_updated' : 'no_action_needed',
+      source: 'streaming',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('Error in real-time streaming:', error);
+    
+    let errorMessage = 'Unknown error';
+    let statusCode = 500;
+    
+    if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'IB Service connection refused - service may be starting up';
+      statusCode = 503;
+    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      errorMessage = 'Request timed out - IB Service may be busy';
+      statusCode = 504;
+    } else if (error.response?.status) {
+      statusCode = error.response.status;
+      errorMessage = error.response.data?.error || error.response.statusText;
+    } else {
+      errorMessage = error.message || 'Failed to stream real-time data';
+    }
+    
+    res.status(statusCode).json({
+      error: 'Failed to stream real-time data',
+      message: errorMessage,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Helper function to get timeframe in minutes
+function getTimeframeMinutes(timeframe: string): number {
+  const timeframes: Record<string, number> = {
+    '1min': 1,
+    '5min': 5,
+    '15min': 15,
+    '30min': 30,
+    '1hour': 60,
+    '4hour': 240,
+    '8hour': 480,
+    '1day': 1440
+  };
+  return timeframes[timeframe] || 60; // Default to 1 hour
+}
+
 // Clean old data endpoint
 router.post('/database/clean', async (req: Request, res: Response) => {
   try {

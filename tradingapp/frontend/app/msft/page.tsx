@@ -38,7 +38,8 @@ export default function MSFTPage() {
               <p><strong>Environment:</strong> {process.env.NODE_ENV || 'development'}</p>
             </div>
             <div>
-              <p><strong>Target Endpoint:</strong> /api/market-data/realtime?symbol=MSFT</p>
+              <p><strong>Historical Endpoint:</strong> /api/market-data/history?symbol=MSFT</p>
+              <p><strong>Streaming Endpoint:</strong> /api/market-data/stream?symbol=MSFT</p>
               <p><strong>Update Frequency:</strong> Every 2 seconds</p>
             </div>
           </div>

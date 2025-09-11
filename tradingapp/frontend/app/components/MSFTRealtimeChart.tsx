@@ -479,7 +479,132 @@ export default function MSFTRealtimeChart() {
     }
   };
 
-  // Fetch real-time data for current price display
+  // Enhanced real-time streaming that continues from last historical point
+  const fetchRealtimeStream = async () => {
+    if (!dataQueryEnabled) {
+      console.log('Real-time streaming is disabled');
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('NEXT_PUBLIC_API_URL not configured');
+      }
+
+      const response = await fetch(`${apiUrl}/api/market-data/stream?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${accountMode}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': dataQueryEnabled.toString()
+        },
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error('Gateway timeout - IB service busy, will retry');
+        } else if (response.status === 503) {
+          throw new Error('Service temporarily unavailable, will retry');
+        } else if (response.status === 500) {
+          try {
+            const errorData = await response.json();
+            if (errorData.detail && errorData.detail.includes('subscription')) {
+              throw new Error('Using delayed market data - real-time subscription not available');
+            } else if (errorData.detail && errorData.detail.includes('timeout')) {
+              throw new Error('IB Gateway timeout - will retry');
+            } else {
+              throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+            }
+          } catch (jsonError) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      }
+
+      const streamData = await response.json();
+      
+      if (streamData.realtime_data && streamData.realtime_data.last && streamData.realtime_data.last > 0) {
+        // Update current price display
+        setCurrentData(streamData.realtime_data);
+        setLastUpdate(new Date());
+        setError(null);
+
+        // If we have new bar data, update the chart
+        if (streamData.new_bar_data) {
+          console.log('New bar data received:', streamData.action, streamData.new_bar_data);
+          
+          // Convert the new bar data to TradingView format
+          const newBar: CandlestickData = {
+            time: Math.floor(new Date(streamData.new_bar_data.timestamp).getTime() / 1000) as Time,
+            open: streamData.new_bar_data.open,
+            high: streamData.new_bar_data.high,
+            low: streamData.new_bar_data.low,
+            close: streamData.new_bar_data.close,
+            volume: streamData.new_bar_data.volume
+          };
+
+          // Update chart data
+          setChartData(prevData => {
+            if (streamData.action === 'new_bar_created') {
+              // Add new bar to the end
+              const updatedData = [...prevData, newBar];
+              console.log('Added new bar to chart');
+              return updatedData;
+            } else if (streamData.action === 'last_bar_updated') {
+              // Update the last bar
+              const updatedData = [...prevData];
+              if (updatedData.length > 0) {
+                updatedData[updatedData.length - 1] = newBar;
+                console.log('Updated last bar in chart');
+              }
+              return updatedData;
+            }
+            return prevData;
+          });
+
+          // Update the chart series
+          if (candlestickSeries.current) {
+            if (streamData.action === 'new_bar_created') {
+              candlestickSeries.current.update(newBar);
+            } else if (streamData.action === 'last_bar_updated') {
+              candlestickSeries.current.update(newBar);
+            }
+          }
+
+          // Update volume series
+          if (volumeSeries.current) {
+            const volumeData = {
+              time: newBar.time,
+              value: newBar.volume || 0,
+              color: newBar.close >= newBar.open ? '#22c55e' : '#ef4444'
+            };
+            volumeSeries.current.update(volumeData);
+          }
+        }
+      } else {
+        throw new Error('Invalid streaming data received from API');
+      }
+    } catch (err) {
+      console.error('Error in real-time streaming:', err);
+      
+      if (err instanceof Error && (err.message.includes('timeout') || err.message.includes('busy'))) {
+        console.log('Temporary timeout, will retry automatically...');
+        if (!currentData || (new Date().getTime() - (lastUpdate?.getTime() || 0)) > 30000) {
+          setError('Connection temporarily slow, retrying...');
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to stream data');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fallback to simple real-time data for current price display
   const fetchRealtimeData = async () => {
     if (!dataQueryEnabled) {
       console.log('Real-time data fetching is disabled');
@@ -557,22 +682,23 @@ export default function MSFTRealtimeChart() {
     }
   }, [currentTimeframe, currentPeriod, dataQueryEnabled, selectedIndicators]);
 
-  // Set up polling for real-time data - only when data query is enabled
+  // Set up polling for real-time streaming - only when data query is enabled
   useEffect(() => {
     if (!dataQueryEnabled) {
-      console.log('Real-time polling disabled - data querying is off');
+      console.log('Real-time streaming disabled - data querying is off');
       return;
     }
 
     if (useCustomDateRange) {
-      console.log('Custom date range active, stopping real-time polling.');
+      console.log('Custom date range active, stopping real-time streaming.');
       return;
     }
 
-    fetchRealtimeData();
-    const interval = setInterval(fetchRealtimeData, 5000); // Every 5 seconds for current price
+    // Use enhanced streaming for real-time chart updates
+    fetchRealtimeStream();
+    const interval = setInterval(fetchRealtimeStream, 2000); // Every 2 seconds for streaming updates
     return () => clearInterval(interval);
-  }, [dataQueryEnabled, useCustomDateRange]);
+  }, [dataQueryEnabled, useCustomDateRange, currentTimeframe]);
 
   // Helper functions
   const formatTime = (date: Date) => {
@@ -641,9 +767,9 @@ export default function MSFTRealtimeChart() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
           <h2 className="text-lg sm:text-xl font-bold">MSFT - Microsoft Corporation</h2>
           <div className="text-xs sm:text-sm opacity-90">
-            NASDAQ • {dataType === 'real-time' ? 'Live Data' : 'Delayed Data (15-20 min)'} • {accountMode.toUpperCase()} Mode
+            NASDAQ • {dataType === 'real-time' ? 'Live Streaming' : 'Delayed Data (15-20 min)'} • {accountMode.toUpperCase()} Mode
             <span className="ml-2 px-2 py-1 bg-green-500 text-white text-xs rounded">
-              v3.0 {periods.length} periods
+              v4.0 Historical + Streaming
             </span>
           </div>
         </div>
