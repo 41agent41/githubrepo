@@ -39,9 +39,9 @@ export class MarketDataService {
   // Get or create contract in database
   async getOrCreateContract(contract: Contract): Promise<number> {
     const query = `
-      INSERT INTO contracts (symbol, sec_type, exchange, currency, multiplier, expiry, strike, right, local_symbol, contract_id)
+      INSERT INTO contracts (symbol, sec_type, exchange, currency, multiplier, expiry, strike, option_right, local_symbol, contract_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      ON CONFLICT (symbol, sec_type, exchange, currency, expiry, strike, right)
+      ON CONFLICT (symbol, sec_type, exchange, currency, expiry, strike, option_right)
       DO UPDATE SET 
         local_symbol = EXCLUDED.local_symbol,
         contract_id = EXCLUDED.contract_id,

@@ -19,14 +19,14 @@ CREATE TABLE IF NOT EXISTS contracts (
     multiplier VARCHAR(10),
     expiry DATE,
     strike DECIMAL(10,2),
-    right VARCHAR(4), -- CALL, PUT for options
+    option_right VARCHAR(4), -- CALL, PUT for options
     local_symbol VARCHAR(50),
     contract_id INTEGER, -- IB contract ID
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     
     -- Composite unique constraint
-    UNIQUE(symbol, sec_type, exchange, currency, expiry, strike, right)
+    UNIQUE(symbol, sec_type, exchange, currency, expiry, strike, option_right)
 );
 
 -- Create index for efficient contract lookups
