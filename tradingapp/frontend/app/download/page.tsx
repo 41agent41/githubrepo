@@ -153,7 +153,13 @@ export default function DownloadPage() {
     
     setIsLoading(true);
     setError(null);
-    setDownloadStatus({ isDownloading: true, isUploading: false, downloadProgress: 'Connecting to IB Gateway...' });
+    setDownloadStatus({ 
+      isDownloading: true, 
+      isUploading: false, 
+      isBulkCollecting: false, 
+      isValidating: false, 
+      downloadProgress: 'Connecting to IB Gateway...' 
+    });
     
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -230,13 +236,25 @@ export default function DownloadPage() {
       console.log('Received', data.bars.length, 'bars');
 
       setChartData(data);
-      setDownloadStatus({ isDownloading: false, isUploading: false, downloadProgress: `Successfully downloaded ${data.bars.length} records` });
+      setDownloadStatus({ 
+        isDownloading: false, 
+        isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
+        downloadProgress: `Successfully downloaded ${data.bars.length} records` 
+      });
       console.log('Historical data downloaded successfully');
 
     } catch (err) {
       console.error('Error fetching historical data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch historical data');
-      setDownloadStatus({ isDownloading: false, isUploading: false, error: err instanceof Error ? err.message : 'Failed to fetch historical data' });
+      setDownloadStatus({ 
+        isDownloading: false, 
+        isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
+        error: err instanceof Error ? err.message : 'Failed to fetch historical data' 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -249,7 +267,13 @@ export default function DownloadPage() {
       return;
     }
 
-    setDownloadStatus({ isDownloading: false, isUploading: true, uploadProgress: 'Preparing data for database...' });
+    setDownloadStatus({ 
+      isDownloading: false, 
+      isUploading: true, 
+      isBulkCollecting: false, 
+      isValidating: false, 
+      uploadProgress: 'Preparing data for database...' 
+    });
     setError(null);
 
     try {
@@ -295,6 +319,8 @@ export default function DownloadPage() {
       setDownloadStatus({ 
         isDownloading: false, 
         isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
         uploadProgress: `Successfully uploaded ${result.uploaded_count || chartData.bars.length} records to database` 
       });
 
@@ -304,6 +330,8 @@ export default function DownloadPage() {
       setDownloadStatus({ 
         isDownloading: false, 
         isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
         error: err instanceof Error ? err.message : 'Failed to upload data to database' 
       });
     }
