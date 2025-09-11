@@ -7,7 +7,7 @@ A simplified trading application with TradingView lightweight charts and reliabl
 ### **Single Command Setup**
 ```bash
 # Clone repository
-git clone https://github.com/your-username/tradingapp.git
+git clone https://github.com/41agent41/githubrepo.git tradingapp
 cd tradingapp
 
 # Make script executable (Linux/Mac)

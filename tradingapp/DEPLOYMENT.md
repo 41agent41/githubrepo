@@ -47,7 +47,7 @@ apt install git
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-username/tradingapp.git
+git clone https://github.com/41agent41/githubrepo.git tradingapp
 cd tradingapp
 
 chmod +x *.sh
@@ -108,7 +108,7 @@ sudo chmod +x /usr/local/bin/docker-compose
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/tradingapp.git
+git clone https://github.com/41agent41/githubrepo.git tradingapp
 cd tradingapp
 
 # Make scripts executable
