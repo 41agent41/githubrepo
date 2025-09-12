@@ -6,6 +6,7 @@ import marketDataRoutes from './routes/marketData.js';
 import accountRoutes from './routes/account.js';
 import settingsRoutes from './routes/settings.js';
 import databaseRoutes from './routes/database.js';
+import constraintTestRoutes from './routes/constraint-test.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
 
@@ -113,6 +114,7 @@ app.use('/api/market-data', marketDataRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/database', databaseRoutes);
+app.use('/api/constraint-test', constraintTestRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -123,6 +125,7 @@ app.get('/', (req, res) => {
       health: '/api/health',
       database_health: '/api/database/health',
       database_connectivity: '/api/database/connectivity-test',
+      constraint_test: '/api/constraint-test/test-constraints',
       market_data: '/api/market-data',
       settings: '/api/settings'
     }

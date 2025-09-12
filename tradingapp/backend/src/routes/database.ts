@@ -177,6 +177,7 @@ router.post('/connectivity-test', async (req: Request, res: Response) => {
       const expectedIndexes = [
         'idx_contracts_symbol', 'idx_contracts_sec_type', 'idx_contracts_exchange', 'idx_contracts_contract_id',
         'idx_candlestick_contract_timeframe', 'idx_candlestick_timestamp', 'idx_candlestick_contract_timestamp',
+        'idx_candlestick_contract_timetrans', 'idx_candlestick_drawtimestamp',
         'idx_tick_contract_timestamp', 'idx_tick_type',
         'idx_sessions_contract', 'idx_sessions_status',
         'idx_quality_contract_date'
@@ -228,16 +229,38 @@ router.post('/connectivity-test', async (req: Request, res: Response) => {
       const uniqueConstraints = foundConstraints.filter(c => c.constraint_type === 'UNIQUE').length;
       const foreignKeys = foundConstraints.filter(c => c.constraint_type === 'FOREIGN KEY').length;
       
-      schema.constraintsExist = primaryKeys >= 6 && uniqueConstraints >= 6 && foreignKeys >= 4; // Expected minimum counts
+      // More specific constraint validation
+      const expectedPrimaryKeys = 6; // contracts, candlestick_data, tick_data, data_collection_sessions, data_quality_metrics, data_collection_config
+      const expectedUniqueConstraints = 4; // contracts unique, candlestick_data unique, data_quality_metrics unique, data_collection_config unique
+      const expectedForeignKeys = 2; // candlestick_data -> contracts, tick_data -> contracts (minimum)
       
+      // Detailed validation with logging
+      const primaryKeysPass = primaryKeys >= expectedPrimaryKeys;
+      const uniqueConstraintsPass = uniqueConstraints >= expectedUniqueConstraints;
+      const foreignKeysPass = foreignKeys >= expectedForeignKeys;
+      
+      schema.constraintsExist = primaryKeysPass && uniqueConstraintsPass && foreignKeysPass;
+      
+      console.log(`Constraint validation: PK=${primaryKeys}/${expectedPrimaryKeys} (${primaryKeysPass}), UK=${uniqueConstraints}/${expectedUniqueConstraints} (${uniqueConstraintsPass}), FK=${foreignKeys}/${expectedForeignKeys} (${foreignKeysPass}), Overall=${schema.constraintsExist}`);
+      
+      const constraintStatus = schema.constraintsExist ? 'success' : 'warning';
+      const constraintMessage = schema.constraintsExist 
+        ? `All constraints properly configured: ${primaryKeys} primary keys, ${uniqueConstraints} unique constraints, ${foreignKeys} foreign keys`
+        : `Constraint validation: PK ${primaryKeys}/${expectedPrimaryKeys} (${primaryKeysPass ? 'PASS' : 'FAIL'}), UK ${uniqueConstraints}/${expectedUniqueConstraints} (${uniqueConstraintsPass ? 'PASS' : 'FAIL'}), FK ${foreignKeys}/${expectedForeignKeys} (${foreignKeysPass ? 'PASS' : 'FAIL'})`;
+
       tests.push({
         test: 'Schema Constraints',
-        status: schema.constraintsExist ? 'success' : 'warning',
-        message: `Found ${primaryKeys} primary keys, ${uniqueConstraints} unique constraints, ${foreignKeys} foreign keys`,
+        status: constraintStatus,
+        message: constraintMessage,
         details: {
           primaryKeys,
           uniqueConstraints,
           foreignKeys,
+          expected: {
+            primaryKeys: expectedPrimaryKeys,
+            uniqueConstraints: expectedUniqueConstraints,
+            foreignKeys: expectedForeignKeys
+          },
           allConstraints: foundConstraints
         },
         duration: Date.now() - constraintsStart
