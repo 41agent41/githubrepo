@@ -405,17 +405,52 @@ export class MarketDataService {
       currency
     });
     
-    // Convert bars to CandlestickBar format
-    const candlestickBars: CandlestickBar[] = bars.map(bar => ({
-      timestamp: new Date(bar.timestamp * 1000), // Convert Unix timestamp to Date
-      open: parseFloat(bar.open),
-      high: parseFloat(bar.high),
-      low: parseFloat(bar.low),
-      close: parseFloat(bar.close),
-      volume: parseInt(bar.volume),
-      wap: bar.wap ? parseFloat(bar.wap) : undefined,
-      count: bar.count ? parseInt(bar.count) : undefined
-    }));
+    // Convert bars to CandlestickBar format with robust timestamp handling
+    const candlestickBars: CandlestickBar[] = bars.map((bar, index) => {
+      try {
+        // Handle different timestamp formats from IB service
+        let timestamp = bar.timestamp;
+        
+        // If timestamp is already a Date object, use it
+        if (timestamp instanceof Date) {
+          // Already a Date object
+        } else if (typeof timestamp === 'number') {
+          // Unix timestamp - check if it's in seconds or milliseconds
+          if (timestamp < 10000000000) {
+            // Timestamp is in seconds, convert to milliseconds
+            timestamp = new Date(timestamp * 1000);
+          } else {
+            // Timestamp is already in milliseconds
+            timestamp = new Date(timestamp);
+          }
+        } else if (typeof timestamp === 'string') {
+          // String timestamp, try to parse
+          timestamp = new Date(timestamp);
+        } else {
+          throw new Error(`Invalid timestamp format: ${timestamp} (type: ${typeof timestamp})`);
+        }
+        
+        // Validate the resulting timestamp
+        if (isNaN(timestamp.getTime())) {
+          throw new Error(`Invalid date created from timestamp: ${bar.timestamp}`);
+        }
+        
+        return {
+          timestamp: timestamp,
+          open: parseFloat(bar.open),
+          high: parseFloat(bar.high),
+          low: parseFloat(bar.low),
+          close: parseFloat(bar.close),
+          volume: parseInt(bar.volume) || 0,
+          wap: bar.wap ? parseFloat(bar.wap) : undefined,
+          count: bar.count ? parseInt(bar.count) : undefined
+        };
+      } catch (error) {
+        console.error(`Error processing bar ${index} for ${symbol}:`, error);
+        console.error(`Bar data:`, bar);
+        throw error;
+      }
+    });
     
     // Store candlestick data
     const result = await this.storeCandlestickData(contractId, timeframe, candlestickBars);

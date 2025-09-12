@@ -805,28 +805,46 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
         try {
           console.log(`Collecting ${symbol} ${timeframe}...`);
           
+          const requestParams = {
+            symbol: symbol.toUpperCase(),
+            timeframe,
+            period: period || '1Y',
+            account_mode: account_mode || 'paper',
+            secType: secType || 'STK',
+            exchange: exchange || 'SMART',
+            currency: currency || 'USD'
+          };
+          
+          console.log(`Request params for ${symbol} ${timeframe}:`, requestParams);
+          
           // Fetch data from IB service
           const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
-            params: {
-              symbol: symbol.toUpperCase(),
-              timeframe,
-              period: period || '1Y',
-              account_mode: account_mode || 'paper',
-              secType: secType || 'STK',
-              exchange: exchange || 'SMART',
-              currency: currency || 'USD'
-            },
-            timeout: 30000 // 30 second timeout
+            params: requestParams,
+            timeout: 60000 // Increased to 60 second timeout for bulk operations
           });
+          
+          console.log(`Response status for ${symbol} ${timeframe}: ${response.status}`);
 
           const data = response.data;
           
-          if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+          // Handle both possible response formats: data.bars (from IB service) or data.data (legacy)
+          const bars = data.bars || data.data || [];
+          
+          console.log(`Bulk collection for ${symbol} ${timeframe}: received response with ${bars.length} bars`);
+          console.log(`Response structure:`, {
+            hasBars: !!data.bars,
+            hasData: !!data.data,
+            barsLength: data.bars?.length || 0,
+            dataLength: data.data?.length || 0,
+            responseKeys: Object.keys(data)
+          });
+          
+          if (data && Array.isArray(bars) && bars.length > 0) {
             // Upload to database
             const uploadResult = await marketDataService.uploadHistoricalData({
               symbol: symbol.toUpperCase(),
               timeframe,
-              bars: data.data,
+              bars: bars,
               account_mode: account_mode || 'paper',
               secType: secType || 'STK',
               exchange: exchange || 'SMART',
@@ -835,7 +853,7 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
 
             results[symbol][timeframe] = {
               success: true,
-              records_fetched: data.data.length,
+              records_fetched: bars.length,
               records_uploaded: uploadResult.uploaded_count,
               records_skipped: uploadResult.skipped_count,
               source: data.source || 'IB Gateway'
@@ -843,14 +861,26 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
 
             summary.successful_operations++;
             summary.total_records_collected += uploadResult.uploaded_count;
+            
+            console.log(`Successfully processed ${symbol} ${timeframe}: ${uploadResult.uploaded_count} records uploaded`);
           } else {
+            const errorMsg = `No data received from IB service - bars: ${bars.length}, response keys: ${Object.keys(data).join(', ')}`;
+            console.error(`Bulk collection failed for ${symbol} ${timeframe}: ${errorMsg}`);
+            
             results[symbol][timeframe] = {
               success: false,
-              error: 'No data received from IB service',
-              records_fetched: 0
+              error: errorMsg,
+              records_fetched: 0,
+              response_debug: {
+                hasBars: !!data.bars,
+                hasData: !!data.data,
+                responseKeys: Object.keys(data),
+                barsLength: data.bars?.length || 0,
+                dataLength: data.data?.length || 0
+              }
             };
             summary.failed_operations++;
-            summary.errors.push(`${symbol} ${timeframe}: No data received`);
+            summary.errors.push(`${symbol} ${timeframe}: ${errorMsg}`);
           }
 
         } catch (error: any) {
