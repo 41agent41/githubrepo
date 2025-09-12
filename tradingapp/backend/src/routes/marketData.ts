@@ -350,9 +350,10 @@ router.get('/history', async (req: Request, res: Response) => {
           return res.json({
             symbol: symbol,
             timeframe: timeframe,
-            data: dbData,
+            bars: dbData, // Use 'bars' for consistency with frontend expectations
             source: 'database',
             count: dbData.length,
+            last_updated: new Date().toISOString(),
             start_date: startDate.toISOString(),
             end_date: endDate.toISOString(),
             timestamp: new Date().toISOString()
@@ -444,9 +445,16 @@ router.get('/history', async (req: Request, res: Response) => {
       }
     }
 
+    // Ensure consistent response format regardless of source
+    const responseData = response.data;
+    
     res.json({
-      ...response.data,
+      symbol: symbol,
+      timeframe: timeframe,
+      bars: responseData.data || responseData.bars || [], // Handle different IB service response formats
+      count: responseData.data?.length || responseData.bars?.length || 0,
       source: 'ib_service',
+      last_updated: responseData.last_updated || new Date().toISOString(),
       timestamp: new Date().toISOString()
     });
 
