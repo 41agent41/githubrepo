@@ -104,6 +104,7 @@ export default function DownloadPage() {
   const [bulkTimeframes, setBulkTimeframes] = useState(['1day', '1hour']);
   const [bulkResults, setBulkResults] = useState<BulkCollectionResult | null>(null);
   const [bulkData, setBulkData] = useState<Record<string, Record<string, any>> | null>(null);
+  const [bulkDisplayData, setBulkDisplayData] = useState<HistoricalData | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [showBulkMode, setShowBulkMode] = useState(false);
@@ -521,6 +522,67 @@ export default function DownloadPage() {
         isValidating: false, 
         error: err instanceof Error ? err.message : 'Failed to upload bulk data to database' 
       });
+    }
+  };
+
+  // Function to fetch and display bulk collected data from database
+  const fetchBulkDataForDisplay = async (symbol: string, timeframe: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const response = await fetch(`/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1Y&account_mode=${accountMode}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch data: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data: HistoricalData = await response.json();
+      
+      // Validate and normalize the data
+      if (!data || !data.bars || !Array.isArray(data.bars)) {
+        throw new Error('Invalid data format received from server');
+      }
+
+      // Normalize timestamp and numeric fields
+      const normalizedBars = data.bars.map((bar, index) => {
+        try {
+          return {
+            timestamp: bar.timestamp || bar.time,
+            open: parseFloat(bar.open),
+            high: parseFloat(bar.high),
+            low: parseFloat(bar.low),
+            close: parseFloat(bar.close),
+            volume: parseInt(bar.volume) || 0,
+            wap: bar.wap ? parseFloat(bar.wap) : undefined,
+            count: bar.count ? parseInt(bar.count) : undefined
+          };
+        } catch (error) {
+          console.error(`Error normalizing bar ${index}:`, error, bar);
+          throw error;
+        }
+      });
+
+      const normalizedData: HistoricalData = {
+        ...data,
+        bars: normalizedBars
+      };
+
+      setBulkDisplayData(normalizedData);
+      console.log(`Successfully fetched ${normalizedData.bars.length} bars for ${symbol} ${timeframe}`);
+
+    } catch (err) {
+      console.error('Error fetching bulk data for display:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch bulk data for display');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1335,8 +1397,16 @@ export default function DownloadPage() {
                           <div className="font-medium">{timeframe}</div>
                           {result.success ? (
                             <div>
-                              ✅ {result.records_uploaded} records
+                              <div>✅ {result.records_uploaded} records
                               {result.records_skipped > 0 && <span className="text-xs"> ({result.records_skipped} skipped)</span>}
+                              </div>
+                              <button
+                                onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
+                                disabled={isLoading}
+                                className="mt-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isLoading ? 'Loading...' : 'View Data'}
+                              </button>
                             </div>
                           ) : (
                             <div>❌ {result.error}</div>
@@ -1580,6 +1650,61 @@ export default function DownloadPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Bulk Collection Data Display */}
+        {bulkDisplayData && bulkDisplayData.bars && bulkDisplayData.bars.length > 0 && (
+          <div className="space-y-6">
+            {/* Bulk Data Summary */}
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-medium text-gray-900">
+                  📈 Bulk Collection Data: {bulkDisplayData.symbol}
+                </h2>
+                <button
+                  onClick={() => setBulkDisplayData(null)}
+                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded"
+                >
+                  Close View
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-green-800 font-medium">Records Retrieved</p>
+                  <p className="text-green-700">{bulkDisplayData.bars.length}</p>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-blue-800 font-medium">Data Source</p>
+                  <p className="text-blue-700">{bulkDisplayData.source}</p>
+                </div>
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-md">
+                  <p className="text-purple-800 font-medium">Timeframe</p>
+                  <p className="text-purple-700">{timeframes.find(tf => tf.value === bulkDisplayData.timeframe)?.label || bulkDisplayData.timeframe}</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Bulk Data Viewer */}
+            <DataframeViewer
+              data={bulkDisplayData.bars.map(bar => ({
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                wap: bar.wap,
+                count: bar.count
+              }))}
+              title={`Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})`}
+              description={`${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database`}
+              maxHeight="600px"
+              showExport={true}
+              showPagination={true}
+              itemsPerPage={25}
+            />
           </div>
         )}
       </main>
