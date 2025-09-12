@@ -143,15 +143,15 @@ export default function DownloadPage() {
       }
     }
     return {
-      singleSymbol: { enabled: false, interval: 900 }, // 15 minutes in seconds
-      bulkCollection: { enabled: false, interval: 3600 } // 60 minutes in seconds
+      singleSymbol: { enabled: false, interval: 1800 }, // 30 minutes in seconds
+      bulkCollection: { enabled: false, interval: 7200 } // 120 minutes in seconds
     };
   });
   
   // Timer intervals state (in seconds)
   const [timerIntervals, setTimerIntervals] = useState({
-    singleSymbol: 900, // 15 minutes
-    bulkCollection: 3600 // 60 minutes
+    singleSymbol: 1800, // 30 minutes
+    bulkCollection: 7200 // 120 minutes
   });
   
   // Real-time countdown state
@@ -246,7 +246,7 @@ export default function DownloadPage() {
           'X-Data-Query-Enabled': 'true',
           'Content-Type': 'application/json'
         },
-        signal: AbortSignal.timeout(120000) // 2 minute timeout for IB Gateway
+        signal: AbortSignal.timeout(300000) // 5 minute timeout for IB Gateway
       });
 
       console.log('Response status:', response.status);
@@ -305,15 +305,17 @@ export default function DownloadPage() {
       console.error('Error fetching historical data:', err);
       
       // Retry logic for timeout and connection issues
-      if (retryCount < 2 && (
+      if (retryCount < 3 && (
         (err instanceof Error && err.message.includes('timeout')) ||
         (err instanceof Error && err.message.includes('Gateway timeout')) ||
-        (err instanceof Error && err.message.includes('Service temporarily unavailable'))
+        (err instanceof Error && err.message.includes('Service temporarily unavailable')) ||
+        (err instanceof Error && err.message.includes('No data received'))
       )) {
-        console.log(`Retrying in 5 seconds... (Attempt ${retryCount + 1})`);
+        const retryDelay = Math.min(10000 * (retryCount + 1), 30000); // Progressive delay: 10s, 20s, 30s
+        console.log(`Retrying in ${retryDelay/1000} seconds... (Attempt ${retryCount + 1})`);
         setTimeout(() => {
           fetchHistoricalData(retryCount + 1);
-        }, 5000);
+        }, retryDelay);
         return;
       }
       
@@ -568,6 +570,7 @@ export default function DownloadPage() {
           'Content-Type': 'application/json',
           'X-Data-Query-Enabled': 'true'
         },
+        signal: AbortSignal.timeout(600000), // 10 minute timeout for bulk operations
         body: JSON.stringify({
           symbols: symbolsArray,
           timeframes: bulkTimeframes,
@@ -609,15 +612,17 @@ export default function DownloadPage() {
       console.error('Error in bulk collection:', err);
       
       // Retry logic for timeout and connection issues
-      if (retryCount < 2 && (
+      if (retryCount < 3 && (
         (err instanceof Error && err.message.includes('timeout')) ||
         (err instanceof Error && err.message.includes('Gateway timeout')) ||
-        (err instanceof Error && err.message.includes('Service temporarily unavailable'))
+        (err instanceof Error && err.message.includes('Service temporarily unavailable')) ||
+        (err instanceof Error && err.message.includes('No data received'))
       )) {
-        console.log(`Retrying bulk collection in 10 seconds... (Attempt ${retryCount + 1})`);
+        const retryDelay = Math.min(15000 * (retryCount + 1), 45000); // Progressive delay: 15s, 30s, 45s
+        console.log(`Retrying bulk collection in ${retryDelay/1000} seconds... (Attempt ${retryCount + 1})`);
         setTimeout(() => {
           performBulkCollection(retryCount + 1);
-        }, 10000);
+        }, retryDelay);
         return;
       }
       
@@ -951,7 +956,7 @@ export default function DownloadPage() {
                     max="86400"
                     value={timerIntervals.singleSymbol}
                     onChange={(e) => {
-                      const value = parseInt(e.target.value) || 900;
+                      const value = parseInt(e.target.value) || 1800;
                       setTimerIntervals(prev => ({ ...prev, singleSymbol: value }));
                       updateTimerConfig('singleSymbol', { interval: value });
                     }}
@@ -1015,7 +1020,7 @@ export default function DownloadPage() {
                     max="86400"
                     value={timerIntervals.bulkCollection}
                     onChange={(e) => {
-                      const value = parseInt(e.target.value) || 3600;
+                      const value = parseInt(e.target.value) || 7200;
                       setTimerIntervals(prev => ({ ...prev, bulkCollection: value }));
                       updateTimerConfig('bulkCollection', { interval: value });
                     }}
@@ -1061,6 +1066,10 @@ export default function DownloadPage() {
               <strong>Auto-Execution Mode:</strong> When enabled, timers will automatically execute "Download from IB API" 
               and "Start Bulk Collection" operations at your configured intervals. Operations will continue automatically 
               after each completion. Timer configurations are saved automatically.
+            </p>
+            <p className="text-xs text-amber-800 mt-2">
+              <strong>⚠️ Important:</strong> IB Gateway operations can take 2-10 minutes to complete. Set timer intervals 
+              to at least 30 minutes for single symbols and 2 hours for bulk collection to avoid overlapping operations.
             </p>
           </div>
         </div>
