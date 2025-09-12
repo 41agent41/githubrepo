@@ -62,6 +62,18 @@ interface HealthStatus {
   };
 }
 
+interface TimerConfig {
+  enabled: boolean;
+  interval: number; // in minutes
+  lastExecution?: Date;
+  nextExecution?: Date;
+}
+
+interface TimerStatus {
+  singleSymbol: TimerConfig;
+  bulkCollection: TimerConfig;
+}
+
 export default function DownloadPage() {
   const { isLiveTrading, accountMode, dataType } = useTradingAccount();
   
@@ -108,6 +120,44 @@ export default function DownloadPage() {
   const [showValidation, setShowValidation] = useState(false);
   const [showDatabaseTest, setShowDatabaseTest] = useState(false);
   const [databaseConnectivityStatus, setDatabaseConnectivityStatus] = useState<any>(null);
+  
+  // Timer configuration state
+  const [timerStatus, setTimerStatus] = useState<TimerStatus>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('download-page-timer-config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          singleSymbol: {
+            ...parsed.singleSymbol,
+            lastExecution: parsed.singleSymbol.lastExecution ? new Date(parsed.singleSymbol.lastExecution) : undefined,
+            nextExecution: parsed.singleSymbol.nextExecution ? new Date(parsed.singleSymbol.nextExecution) : undefined
+          },
+          bulkCollection: {
+            ...parsed.bulkCollection,
+            lastExecution: parsed.bulkCollection.lastExecution ? new Date(parsed.bulkCollection.lastExecution) : undefined,
+            nextExecution: parsed.bulkCollection.nextExecution ? new Date(parsed.bulkCollection.nextExecution) : undefined
+          }
+        };
+      }
+    }
+    return {
+      singleSymbol: { enabled: false, interval: 15 },
+      bulkCollection: { enabled: false, interval: 60 }
+    };
+  });
+  
+  // Timer intervals state
+  const [timerIntervals, setTimerIntervals] = useState({
+    singleSymbol: 15,
+    bulkCollection: 60
+  });
+  
+  // Real-time countdown state
+  const [countdown, setCountdown] = useState({
+    singleSymbol: '',
+    bulkCollection: ''
+  });
   
   // Data query switch state
   const [dataQueryEnabled, setDataQueryEnabled] = useState(() => {
@@ -560,6 +610,124 @@ export default function DownloadPage() {
     }
   };
 
+  // Timer management functions
+  const saveTimerConfig = (config: TimerStatus) => {
+    setTimerStatus(config);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('download-page-timer-config', JSON.stringify(config));
+    }
+  };
+
+  const updateTimerConfig = (type: 'singleSymbol' | 'bulkCollection', updates: Partial<TimerConfig>) => {
+    const newConfig = {
+      ...timerStatus,
+      [type]: { ...timerStatus[type], ...updates }
+    };
+    saveTimerConfig(newConfig);
+  };
+
+  const startTimer = (type: 'singleSymbol' | 'bulkCollection') => {
+    const interval = timerIntervals[type];
+    const nextExecution = new Date(Date.now() + interval * 60 * 1000);
+    
+    updateTimerConfig(type, {
+      enabled: true,
+      interval,
+      nextExecution
+    });
+  };
+
+  const stopTimer = (type: 'singleSymbol' | 'bulkCollection') => {
+    updateTimerConfig(type, {
+      enabled: false,
+      nextExecution: undefined
+    });
+  };
+
+  const executeTimerOperation = async (type: 'singleSymbol' | 'bulkCollection') => {
+    const now = new Date();
+    updateTimerConfig(type, { lastExecution: now });
+    
+    if (type === 'singleSymbol') {
+      await fetchHistoricalData();
+    } else if (type === 'bulkCollection') {
+      await performBulkCollection();
+    }
+    
+    // Schedule next execution
+    if (timerStatus[type].enabled) {
+      const nextExecution = new Date(now.getTime() + timerStatus[type].interval * 60 * 1000);
+      updateTimerConfig(type, { nextExecution });
+    }
+  };
+
+  // Timer effect for single symbol operations
+  React.useEffect(() => {
+    if (!timerStatus.singleSymbol.enabled || !timerStatus.singleSymbol.nextExecution) {
+      return;
+    }
+
+    const now = new Date();
+    const timeUntilNext = timerStatus.singleSymbol.nextExecution.getTime() - now.getTime();
+
+    if (timeUntilNext <= 0) {
+      executeTimerOperation('singleSymbol');
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      executeTimerOperation('singleSymbol');
+    }, timeUntilNext);
+
+    return () => clearTimeout(timeoutId);
+  }, [timerStatus.singleSymbol.enabled, timerStatus.singleSymbol.nextExecution]);
+
+  // Timer effect for bulk collection operations
+  React.useEffect(() => {
+    if (!timerStatus.bulkCollection.enabled || !timerStatus.bulkCollection.nextExecution) {
+      return;
+    }
+
+    const now = new Date();
+    const timeUntilNext = timerStatus.bulkCollection.nextExecution.getTime() - now.getTime();
+
+    if (timeUntilNext <= 0) {
+      executeTimerOperation('bulkCollection');
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      executeTimerOperation('bulkCollection');
+    }, timeUntilNext);
+
+    return () => clearTimeout(timeoutId);
+  }, [timerStatus.bulkCollection.enabled, timerStatus.bulkCollection.nextExecution]);
+
+  // Real-time countdown update effect
+  React.useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      
+      setCountdown({
+        singleSymbol: timerStatus.singleSymbol.enabled && timerStatus.singleSymbol.nextExecution 
+          ? formatTimeRemaining(timerStatus.singleSymbol.nextExecution)
+          : '',
+        bulkCollection: timerStatus.bulkCollection.enabled && timerStatus.bulkCollection.nextExecution 
+          ? formatTimeRemaining(timerStatus.bulkCollection.nextExecution)
+          : ''
+      });
+    };
+
+    // Update immediately
+    updateCountdown();
+
+    // Update every second
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [timerStatus.singleSymbol.enabled, timerStatus.singleSymbol.nextExecution, 
+      timerStatus.bulkCollection.enabled, timerStatus.bulkCollection.nextExecution]);
+
   // Check health on component mount
   React.useEffect(() => {
     checkSystemHealth();
@@ -573,6 +741,23 @@ export default function DownloadPage() {
       minute: '2-digit', 
       second: '2-digit' 
     });
+  };
+
+  // Helper function to format time remaining
+  const formatTimeRemaining = (date: Date) => {
+    const now = new Date();
+    const diff = date.getTime() - now.getTime();
+    
+    if (diff <= 0) return 'Now';
+    
+    const minutes = Math.floor(diff / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
   };
 
   return (
@@ -615,6 +800,143 @@ export default function DownloadPage() {
             description="Enable or disable historical data fetching from IB Gateway"
             size="medium"
           />
+        </div>
+
+        {/* Timer Configuration */}
+        <div className="mb-4 sm:mb-6 bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">⏰ Timer Configuration</h3>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Single Symbol Timer */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-900">Single Symbol Download</h4>
+                <div className={`px-2 py-1 rounded text-xs ${
+                  timerStatus.singleSymbol.enabled 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {timerStatus.singleSymbol.enabled ? '🟢 Active' : '⚪ Inactive'}
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Interval (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={timerIntervals.singleSymbol}
+                    onChange={(e) => setTimerIntervals(prev => ({
+                      ...prev,
+                      singleSymbol: parseInt(e.target.value) || 15
+                    }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={timerStatus.singleSymbol.enabled}
+                  />
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => startTimer('singleSymbol')}
+                    disabled={!dataQueryEnabled || timerStatus.singleSymbol.enabled || downloadStatus.isDownloading}
+                    className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Start Timer
+                  </button>
+                  <button
+                    onClick={() => stopTimer('singleSymbol')}
+                    disabled={!timerStatus.singleSymbol.enabled}
+                    className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Stop Timer
+                  </button>
+                </div>
+                
+                {timerStatus.singleSymbol.enabled && timerStatus.singleSymbol.nextExecution && (
+                  <div className="text-xs text-gray-600">
+                    <div>Next execution: {formatTime(timerStatus.singleSymbol.nextExecution)}</div>
+                    <div className="font-medium text-blue-600">Time remaining: {countdown.singleSymbol}</div>
+                    {timerStatus.singleSymbol.lastExecution && (
+                      <div>Last execution: {formatTime(timerStatus.singleSymbol.lastExecution)}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bulk Collection Timer */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-900">Bulk Collection</h4>
+                <div className={`px-2 py-1 rounded text-xs ${
+                  timerStatus.bulkCollection.enabled 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {timerStatus.bulkCollection.enabled ? '🟢 Active' : '⚪ Inactive'}
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Interval (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={timerIntervals.bulkCollection}
+                    onChange={(e) => setTimerIntervals(prev => ({
+                      ...prev,
+                      bulkCollection: parseInt(e.target.value) || 60
+                    }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={timerStatus.bulkCollection.enabled}
+                  />
+                </div>
+                
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => startTimer('bulkCollection')}
+                    disabled={!dataQueryEnabled || timerStatus.bulkCollection.enabled || downloadStatus.isBulkCollecting}
+                    className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Start Timer
+                  </button>
+                  <button
+                    onClick={() => stopTimer('bulkCollection')}
+                    disabled={!timerStatus.bulkCollection.enabled}
+                    className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Stop Timer
+                  </button>
+                </div>
+                
+                {timerStatus.bulkCollection.enabled && timerStatus.bulkCollection.nextExecution && (
+                  <div className="text-xs text-gray-600">
+                    <div>Next execution: {formatTime(timerStatus.bulkCollection.nextExecution)}</div>
+                    <div className="font-medium text-blue-600">Time remaining: {countdown.bulkCollection}</div>
+                    {timerStatus.bulkCollection.lastExecution && (
+                      <div>Last execution: {formatTime(timerStatus.bulkCollection.lastExecution)}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-xs text-blue-800">
+              <strong>Note:</strong> Timers will automatically execute operations based on your configured intervals. 
+              Make sure to set up your symbols and timeframes before starting timers. 
+              Timer configurations are saved automatically.
+            </p>
+          </div>
         </div>
 
         {/* Mode Toggle */}
