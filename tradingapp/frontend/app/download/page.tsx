@@ -64,7 +64,7 @@ interface HealthStatus {
 
 interface TimerConfig {
   enabled: boolean;
-  interval: number; // in minutes
+  interval: number; // in seconds
   lastExecution?: Date;
   nextExecution?: Date;
 }
@@ -114,6 +114,7 @@ export default function DownloadPage() {
   const [bulkSymbols, setBulkSymbols] = useState('MSFT,AAPL,GOOGL,AMZN,TSLA');
   const [bulkTimeframes, setBulkTimeframes] = useState(['1day', '1hour']);
   const [bulkResults, setBulkResults] = useState<BulkCollectionResult | null>(null);
+  const [bulkData, setBulkData] = useState<Record<string, Record<string, any>> | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [showBulkMode, setShowBulkMode] = useState(false);
@@ -142,15 +143,15 @@ export default function DownloadPage() {
       }
     }
     return {
-      singleSymbol: { enabled: false, interval: 15 },
-      bulkCollection: { enabled: false, interval: 60 }
+      singleSymbol: { enabled: false, interval: 900 }, // 15 minutes in seconds
+      bulkCollection: { enabled: false, interval: 3600 } // 60 minutes in seconds
     };
   });
   
-  // Timer intervals state
+  // Timer intervals state (in seconds)
   const [timerIntervals, setTimerIntervals] = useState({
-    singleSymbol: 15,
-    bulkCollection: 60
+    singleSymbol: 900, // 15 minutes
+    bulkCollection: 3600 // 60 minutes
   });
   
   // Real-time countdown state
@@ -193,8 +194,8 @@ export default function DownloadPage() {
     }
   };
 
-  // Fetch historical data from IB API
-  const fetchHistoricalData = async () => {
+  // Fetch historical data from IB API with retry logic
+  const fetchHistoricalData = async (retryCount = 0) => {
     if (!dataQueryEnabled) {
       console.log('Data querying disabled');
       setIsLoading(false);
@@ -208,7 +209,7 @@ export default function DownloadPage() {
       isUploading: false, 
       isBulkCollecting: false, 
       isValidating: false, 
-      downloadProgress: 'Connecting to IB Gateway...' 
+      downloadProgress: retryCount > 0 ? `Retrying connection to IB Gateway... (Attempt ${retryCount + 1})` : 'Connecting to IB Gateway...' 
     });
     
     try {
@@ -245,7 +246,7 @@ export default function DownloadPage() {
           'X-Data-Query-Enabled': 'true',
           'Content-Type': 'application/json'
         },
-        signal: AbortSignal.timeout(30000) // 30 second timeout
+        signal: AbortSignal.timeout(120000) // 2 minute timeout for IB Gateway
       });
 
       console.log('Response status:', response.status);
@@ -294,9 +295,28 @@ export default function DownloadPage() {
         downloadProgress: `Successfully downloaded ${data.bars.length} records` 
       });
       console.log('Historical data downloaded successfully');
+      
+      // Schedule next execution if timer is enabled
+      if (timerStatus.singleSymbol.enabled) {
+        scheduleNextExecution('singleSymbol');
+      }
 
     } catch (err) {
       console.error('Error fetching historical data:', err);
+      
+      // Retry logic for timeout and connection issues
+      if (retryCount < 2 && (
+        (err instanceof Error && err.message.includes('timeout')) ||
+        (err instanceof Error && err.message.includes('Gateway timeout')) ||
+        (err instanceof Error && err.message.includes('Service temporarily unavailable'))
+      )) {
+        console.log(`Retrying in 5 seconds... (Attempt ${retryCount + 1})`);
+        setTimeout(() => {
+          fetchHistoricalData(retryCount + 1);
+        }, 5000);
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : 'Failed to fetch historical data');
       setDownloadStatus({ 
         isDownloading: false, 
@@ -400,6 +420,11 @@ export default function DownloadPage() {
     }
     
     fetchHistoricalData();
+    
+    // If timer is enabled, schedule next execution
+    if (timerStatus.singleSymbol.enabled) {
+      scheduleNextExecution('singleSymbol');
+    }
   };
 
   // Handle upload button click
@@ -412,8 +437,83 @@ export default function DownloadPage() {
     loadDataToDatabase();
   };
 
-  // Bulk collection function
-  const performBulkCollection = async () => {
+  // Load bulk collection data to PostgreSQL database
+  const loadBulkDataToDatabase = async () => {
+    if (!bulkData || Object.keys(bulkData).length === 0) {
+      setError('No bulk data available to upload. Please perform bulk collection first.');
+      return;
+    }
+
+    setDownloadStatus({ 
+      isDownloading: false, 
+      isUploading: true, 
+      isBulkCollecting: false, 
+      isValidating: false, 
+      uploadProgress: 'Preparing bulk data for database...' 
+    });
+    setError(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL not configured');
+      }
+
+      setDownloadStatus(prev => ({ ...prev, uploadProgress: 'Uploading bulk data to PostgreSQL...' }));
+
+      const response = await fetch(`${apiUrl}/api/market-data/bulk-upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true'
+        },
+        body: JSON.stringify({
+          bulkData: bulkData,
+          account_mode: accountMode,
+          secType: exchangeFilters.secType,
+          exchange: exchangeFilters.exchange,
+          currency: exchangeFilters.currency
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Bulk upload error:', errorText);
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+        } catch (jsonError) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      }
+
+      const result = await response.json();
+      console.log('Bulk upload result:', result);
+      
+      setDownloadStatus({ 
+        isDownloading: false, 
+        isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
+        uploadProgress: `Successfully uploaded bulk data to database` 
+      });
+
+    } catch (err) {
+      console.error('Error uploading bulk data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to upload bulk data to database');
+      setDownloadStatus({ 
+        isDownloading: false, 
+        isUploading: false, 
+        isBulkCollecting: false, 
+        isValidating: false, 
+        error: err instanceof Error ? err.message : 'Failed to upload bulk data to database' 
+      });
+    }
+  };
+
+  // Bulk collection function with retry logic
+  const performBulkCollection = async (retryCount = 0) => {
     if (!dataQueryEnabled) {
       setError('Data querying is disabled. Please enable the switch above.');
       return;
@@ -430,13 +530,18 @@ export default function DownloadPage() {
       setError('Please select at least one timeframe for bulk collection.');
       return;
     }
+    
+    // If timer is enabled, schedule next execution
+    if (timerStatus.bulkCollection.enabled) {
+      scheduleNextExecution('bulkCollection');
+    }
 
     setDownloadStatus({ 
       isDownloading: false, 
       isUploading: false, 
       isBulkCollecting: true, 
       isValidating: false,
-      bulkProgress: 'Starting bulk collection...' 
+      bulkProgress: retryCount > 0 ? `Retrying bulk collection... (Attempt ${retryCount + 1})` : 'Starting bulk collection...' 
     });
     setError(null);
     setBulkResults(null);
@@ -479,6 +584,7 @@ export default function DownloadPage() {
 
       const result: BulkCollectionResult = await response.json();
       setBulkResults(result);
+      setBulkData(result.results);
       
       const successRate = (result.summary.successful_operations / result.summary.total_operations) * 100;
       setDownloadStatus({ 
@@ -488,9 +594,28 @@ export default function DownloadPage() {
         isValidating: false,
         bulkProgress: `Bulk collection completed: ${result.summary.successful_operations}/${result.summary.total_operations} operations successful (${successRate.toFixed(1)}%)` 
       });
+      
+      // Schedule next execution if timer is enabled
+      if (timerStatus.bulkCollection.enabled) {
+        scheduleNextExecution('bulkCollection');
+      }
 
     } catch (err) {
       console.error('Error in bulk collection:', err);
+      
+      // Retry logic for timeout and connection issues
+      if (retryCount < 2 && (
+        (err instanceof Error && err.message.includes('timeout')) ||
+        (err instanceof Error && err.message.includes('Gateway timeout')) ||
+        (err instanceof Error && err.message.includes('Service temporarily unavailable'))
+      )) {
+        console.log(`Retrying bulk collection in 10 seconds... (Attempt ${retryCount + 1})`);
+        setTimeout(() => {
+          performBulkCollection(retryCount + 1);
+        }, 10000);
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : 'Failed to perform bulk collection');
       setDownloadStatus({ 
         isDownloading: false, 
@@ -626,21 +751,14 @@ export default function DownloadPage() {
     saveTimerConfig(newConfig);
   };
 
-  const startTimer = (type: 'singleSymbol' | 'bulkCollection') => {
-    const interval = timerIntervals[type];
-    const nextExecution = new Date(Date.now() + interval * 60 * 1000);
+  const scheduleNextExecution = (type: 'singleSymbol' | 'bulkCollection') => {
+    if (!timerStatus[type].enabled) return;
+    
+    const interval = timerStatus[type].interval;
+    const nextExecution = new Date(Date.now() + interval * 1000); // Convert seconds to milliseconds
     
     updateTimerConfig(type, {
-      enabled: true,
-      interval,
       nextExecution
-    });
-  };
-
-  const stopTimer = (type: 'singleSymbol' | 'bulkCollection') => {
-    updateTimerConfig(type, {
-      enabled: false,
-      nextExecution: undefined
     });
   };
 
@@ -655,10 +773,7 @@ export default function DownloadPage() {
     }
     
     // Schedule next execution
-    if (timerStatus[type].enabled) {
-      const nextExecution = new Date(now.getTime() + timerStatus[type].interval * 60 * 1000);
-      updateTimerConfig(type, { nextExecution });
-    }
+    scheduleNextExecution(type);
   };
 
   // Timer effect for single symbol operations
@@ -804,7 +919,7 @@ export default function DownloadPage() {
 
         {/* Timer Configuration */}
         <div className="mb-4 sm:mb-6 bg-white rounded-lg shadow-sm border p-3 sm:p-4">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">⏰ Timer Configuration</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">⏰ Auto-Execution Timer Configuration</h3>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Single Symbol Timer */}
@@ -816,43 +931,46 @@ export default function DownloadPage() {
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-gray-100 text-gray-600'
                 }`}>
-                  {timerStatus.singleSymbol.enabled ? '🟢 Active' : '⚪ Inactive'}
+                  {timerStatus.singleSymbol.enabled ? '🟢 Auto-Executing' : '⚪ Disabled'}
                 </div>
               </div>
               
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Interval (minutes)
+                    Auto-execution interval (seconds)
                   </label>
                   <input
                     type="number"
-                    min="1"
-                    max="1440"
+                    min="60"
+                    max="86400"
                     value={timerIntervals.singleSymbol}
-                    onChange={(e) => setTimerIntervals(prev => ({
-                      ...prev,
-                      singleSymbol: parseInt(e.target.value) || 15
-                    }))}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 900;
+                      setTimerIntervals(prev => ({ ...prev, singleSymbol: value }));
+                      updateTimerConfig('singleSymbol', { interval: value });
+                    }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={timerStatus.singleSymbol.enabled}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Min: 60s (1 min) | Max: 86400s (24 hours)
+                  </p>
                 </div>
                 
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => startTimer('singleSymbol')}
-                    disabled={!dataQueryEnabled || timerStatus.singleSymbol.enabled || downloadStatus.isDownloading}
+                    onClick={() => updateTimerConfig('singleSymbol', { enabled: true })}
+                    disabled={!dataQueryEnabled || timerStatus.singleSymbol.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Start Timer
+                    Enable Auto-Execution
                   </button>
                   <button
-                    onClick={() => stopTimer('singleSymbol')}
+                    onClick={() => updateTimerConfig('singleSymbol', { enabled: false, nextExecution: undefined })}
                     disabled={!timerStatus.singleSymbol.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Stop Timer
+                    Disable Auto-Execution
                   </button>
                 </div>
                 
@@ -877,43 +995,46 @@ export default function DownloadPage() {
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-gray-100 text-gray-600'
                 }`}>
-                  {timerStatus.bulkCollection.enabled ? '🟢 Active' : '⚪ Inactive'}
+                  {timerStatus.bulkCollection.enabled ? '🟢 Auto-Executing' : '⚪ Disabled'}
                 </div>
               </div>
               
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Interval (minutes)
+                    Auto-execution interval (seconds)
                   </label>
                   <input
                     type="number"
-                    min="1"
-                    max="1440"
+                    min="60"
+                    max="86400"
                     value={timerIntervals.bulkCollection}
-                    onChange={(e) => setTimerIntervals(prev => ({
-                      ...prev,
-                      bulkCollection: parseInt(e.target.value) || 60
-                    }))}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 3600;
+                      setTimerIntervals(prev => ({ ...prev, bulkCollection: value }));
+                      updateTimerConfig('bulkCollection', { interval: value });
+                    }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={timerStatus.bulkCollection.enabled}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Min: 60s (1 min) | Max: 86400s (24 hours)
+                  </p>
                 </div>
                 
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => startTimer('bulkCollection')}
-                    disabled={!dataQueryEnabled || timerStatus.bulkCollection.enabled || downloadStatus.isBulkCollecting}
+                    onClick={() => updateTimerConfig('bulkCollection', { enabled: true })}
+                    disabled={!dataQueryEnabled || timerStatus.bulkCollection.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Start Timer
+                    Enable Auto-Execution
                   </button>
                   <button
-                    onClick={() => stopTimer('bulkCollection')}
+                    onClick={() => updateTimerConfig('bulkCollection', { enabled: false, nextExecution: undefined })}
                     disabled={!timerStatus.bulkCollection.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Stop Timer
+                    Disable Auto-Execution
                   </button>
                 </div>
                 
@@ -932,9 +1053,9 @@ export default function DownloadPage() {
           
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
             <p className="text-xs text-blue-800">
-              <strong>Note:</strong> Timers will automatically execute operations based on your configured intervals. 
-              Make sure to set up your symbols and timeframes before starting timers. 
-              Timer configurations are saved automatically.
+              <strong>Auto-Execution Mode:</strong> When enabled, timers will automatically execute "Download from IB API" 
+              and "Start Bulk Collection" operations at your configured intervals. Operations will continue automatically 
+              after each completion. Timer configurations are saved automatically.
             </p>
           </div>
         </div>
@@ -1146,6 +1267,13 @@ export default function DownloadPage() {
                 className="flex-1 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 {downloadStatus.isBulkCollecting ? 'Collecting...' : 'Start Bulk Collection'}
+              </button>
+              <button
+                onClick={loadBulkDataToDatabase}
+                disabled={!bulkData || Object.keys(bulkData).length === 0 || downloadStatus.isUploading}
+                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                {downloadStatus.isUploading ? 'Uploading...' : 'Load to PostgreSQL'}
               </button>
             </div>
           </div>
