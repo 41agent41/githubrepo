@@ -295,11 +295,6 @@ export default function DownloadPage() {
         downloadProgress: `Successfully downloaded ${data.bars.length} records` 
       });
       console.log('Historical data downloaded successfully');
-      
-      // Schedule next execution if timer is enabled
-      if (timerStatus.singleSymbol.enabled) {
-        scheduleNextExecution('singleSymbol');
-      }
 
     } catch (err) {
       console.error('Error fetching historical data:', err);
@@ -422,11 +417,6 @@ export default function DownloadPage() {
     }
     
     fetchHistoricalData();
-    
-    // If timer is enabled, schedule next execution
-    if (timerStatus.singleSymbol.enabled) {
-      scheduleNextExecution('singleSymbol');
-    }
   };
 
   // Handle bulk collection button click
@@ -537,11 +527,6 @@ export default function DownloadPage() {
       setError('Please select at least one timeframe for bulk collection.');
       return;
     }
-    
-    // If timer is enabled, schedule next execution
-    if (timerStatus.bulkCollection.enabled) {
-      scheduleNextExecution('bulkCollection');
-    }
 
     setDownloadStatus({ 
       isDownloading: false, 
@@ -602,11 +587,6 @@ export default function DownloadPage() {
         isValidating: false,
         bulkProgress: `Bulk collection completed: ${result.summary.successful_operations}/${result.summary.total_operations} operations successful (${successRate.toFixed(1)}%)` 
       });
-      
-      // Schedule next execution if timer is enabled
-      if (timerStatus.bulkCollection.enabled) {
-        scheduleNextExecution('bulkCollection');
-      }
 
     } catch (err) {
       console.error('Error in bulk collection:', err);
@@ -767,6 +747,8 @@ export default function DownloadPage() {
     const interval = timerStatus[type].interval;
     const nextExecution = new Date(Date.now() + interval * 1000); // Convert seconds to milliseconds
     
+    console.log(`Scheduling next ${type} execution in ${interval} seconds (${interval/60} minutes) at ${nextExecution.toLocaleTimeString()}`);
+    
     updateTimerConfig(type, {
       nextExecution
     });
@@ -774,16 +756,32 @@ export default function DownloadPage() {
 
   const executeTimerOperation = async (type: 'singleSymbol' | 'bulkCollection') => {
     const now = new Date();
+    console.log(`Starting timer operation for ${type} at ${now.toLocaleTimeString()}`);
     updateTimerConfig(type, { lastExecution: now });
     
-    if (type === 'singleSymbol') {
-      await fetchHistoricalData();
-    } else if (type === 'bulkCollection') {
-      await performBulkCollection();
+    try {
+      if (type === 'singleSymbol') {
+        await fetchHistoricalData();
+      } else if (type === 'bulkCollection') {
+        await performBulkCollection();
+      }
+      
+      console.log(`Timer operation completed successfully for ${type}`);
+      
+      // Only schedule next execution if timer is still enabled and operation completed successfully
+      if (timerStatus[type].enabled) {
+        scheduleNextExecution(type);
+      }
+    } catch (error) {
+      console.error(`Timer operation failed for ${type}:`, error);
+      // Still schedule next execution even if this one failed, but with a delay
+      if (timerStatus[type].enabled) {
+        console.log(`Scheduling retry for ${type} in 30 seconds`);
+        setTimeout(() => {
+          scheduleNextExecution(type);
+        }, 30000); // Wait 30 seconds before retrying
+      }
     }
-    
-    // Schedule next execution
-    scheduleNextExecution(type);
   };
 
   // Timer effect for single symbol operations
@@ -969,7 +967,14 @@ export default function DownloadPage() {
                 
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => updateTimerConfig('singleSymbol', { enabled: true })}
+                    onClick={() => {
+                      const nextExecution = new Date(Date.now() + timerIntervals.singleSymbol * 1000);
+                      updateTimerConfig('singleSymbol', { 
+                        enabled: true, 
+                        interval: timerIntervals.singleSymbol,
+                        nextExecution 
+                      });
+                    }}
                     disabled={!dataQueryEnabled || timerStatus.singleSymbol.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1033,7 +1038,14 @@ export default function DownloadPage() {
                 
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => updateTimerConfig('bulkCollection', { enabled: true })}
+                    onClick={() => {
+                      const nextExecution = new Date(Date.now() + timerIntervals.bulkCollection * 1000);
+                      updateTimerConfig('bulkCollection', { 
+                        enabled: true, 
+                        interval: timerIntervals.bulkCollection,
+                        nextExecution 
+                      });
+                    }}
                     disabled={!dataQueryEnabled || timerStatus.bulkCollection.enabled}
                     className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
