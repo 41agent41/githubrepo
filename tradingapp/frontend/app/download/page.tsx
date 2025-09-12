@@ -427,6 +427,11 @@ export default function DownloadPage() {
     }
   };
 
+  // Handle bulk collection button click
+  const handleBulkCollection = () => {
+    performBulkCollection();
+  };
+
   // Handle upload button click
   const handleUploadData = () => {
     if (!chartData || !chartData.bars || chartData.bars.length === 0) {
@@ -1262,7 +1267,7 @@ export default function DownloadPage() {
             {/* Bulk Action Buttons */}
             <div className="mt-6 flex space-x-4">
               <button
-                onClick={performBulkCollection}
+                onClick={handleBulkCollection}
                 disabled={!dataQueryEnabled || downloadStatus.isBulkCollecting}
                 className="flex-1 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
@@ -1408,7 +1413,7 @@ export default function DownloadPage() {
               <p className="text-sm text-red-800">{error}</p>
             </div>
             <button
-              onClick={fetchHistoricalData}
+              onClick={handleDownloadData}
               className="mt-2 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
             >
               Retry
