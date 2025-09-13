@@ -11,6 +11,8 @@ interface DataframeViewerProps {
   showExport?: boolean;
   showPagination?: boolean;
   itemsPerPage?: number;
+  emptyStateMessage?: string;
+  emptyStateSubMessage?: string;
 }
 
 interface Column {
@@ -28,7 +30,9 @@ export default function DataframeViewer({
   maxHeight = '400px',
   showExport = true,
   showPagination = true,
-  itemsPerPage = 50
+  itemsPerPage = 50,
+  emptyStateMessage = 'No data available to display',
+  emptyStateSubMessage
 }: DataframeViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
@@ -193,7 +197,10 @@ export default function DataframeViewer({
       <div className={`bg-white rounded-lg shadow-sm border p-4 ${className}`}>
         <div className="text-center py-8 text-gray-500">
           <div className="text-4xl mb-4">📊</div>
-          <p className="text-sm">No data available to display</p>
+          <p className="text-sm">{emptyStateMessage}</p>
+          {emptyStateSubMessage && (
+            <p className="text-xs text-gray-400 mt-2">{emptyStateSubMessage}</p>
+          )}
         </div>
       </div>
     );

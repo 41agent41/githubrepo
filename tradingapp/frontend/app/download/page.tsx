@@ -433,11 +433,21 @@ export default function DownloadPage() {
       return;
     }
     
+    // Reset DataframeViewer to default empty state
+    setChartData(null);
+    setError(null);
+    
     fetchHistoricalData();
   };
 
   // Handle bulk collection button click
   const handleBulkCollection = () => {
+    // Reset DataframeViewer to default empty state
+    setBulkDisplayData(null);
+    setBulkData(null);
+    setBulkResults(null);
+    setError(null);
+    
     performBulkCollection();
   };
 
@@ -803,6 +813,12 @@ export default function DownloadPage() {
       return;
     }
 
+    // Reset DataframeViewer to default empty state
+    setValidationResults(null);
+    setValidationSampleData(null);
+    setSelectedValidationItem(null);
+    setError(null);
+
     setDownloadStatus({ 
       isDownloading: false, 
       isUploading: false, 
@@ -810,8 +826,6 @@ export default function DownloadPage() {
       isValidating: true,
       validationProgress: 'Starting data validation...' 
     });
-    setError(null);
-    setValidationResults(null);
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -1264,6 +1278,31 @@ export default function DownloadPage() {
           </div>
         )}
 
+        {/* Bulk Collection DataframeViewer */}
+        {showBulkMode && !showDatabaseTest && (
+          <div className="mb-6">
+            <DataframeViewer
+              data={bulkDisplayData?.bars?.map(bar => ({
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                // WAP and count columns removed
+              })) || []}
+              title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : 'Bulk Collection Data'}
+              description={bulkDisplayData ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
+              maxHeight="600px"
+              showExport={true}
+              showPagination={true}
+              itemsPerPage={25}
+              emptyStateMessage="No data downloaded yet"
+              emptyStateSubMessage="Enter required symbols, time period, and timeframe, then click 'Start Bulk Collection' to fetch data"
+            />
+          </div>
+        )}
+
         {/* Data Validation Mode */}
         {showValidation && !showDatabaseTest && (
           <div className="mb-6 sm:mb-8 bg-white rounded-lg shadow-sm border p-4 sm:p-6">
@@ -1333,6 +1372,36 @@ export default function DownloadPage() {
                 {downloadStatus.isValidating ? 'Validating...' : 'Validate Data Quality'}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Data Validation DataframeViewer */}
+        {showValidation && !showDatabaseTest && (
+          <div className="mb-6">
+            <DataframeViewer
+              data={validationResults ? Object.entries(validationResults.results).flatMap(([symbol, timeframes]) =>
+                Object.entries(timeframes as Record<string, any>).map(([timeframe, result]) => ({
+                  symbol,
+                  timeframe,
+                  status: result.valid ? 'Valid' : 'Invalid',
+                  record_count: result.record_count || 0,
+                  issues: result.issues ? result.issues.join('; ') : 'None',
+                  error: result.error || 'None',
+                  invalid_ohlc_count: result.invalid_ohlc_count || 0,
+                  zero_volume_count: result.zero_volume_count || 0,
+                  negative_price_count: result.negative_price_count || 0,
+                  has_gaps: result.has_gaps ? 'Yes' : 'No'
+                }))
+              ) : []}
+              title="Validation Results Summary"
+              description={validationResults ? `${validationResults.summary.total_validations} validation results across all symbols and timeframes` : undefined}
+              maxHeight="400px"
+              showExport={true}
+              showPagination={true}
+              itemsPerPage={20}
+              emptyStateMessage="No data downloaded yet"
+              emptyStateSubMessage="Enter required symbols, time period, and timeframe, then click 'Validate Data Quality' to fetch data"
+            />
           </div>
         )}
 
@@ -1532,6 +1601,8 @@ export default function DownloadPage() {
                   showExport={true}
                   showPagination={true}
                   itemsPerPage={20}
+                  emptyStateMessage="No data downloaded yet"
+                  emptyStateSubMessage="Enter required symbols, time period, and timeframe, then click 'Validate Data Quality' to fetch data"
                 />
                 
                 {/* Quick Actions */}
@@ -1633,6 +1704,8 @@ export default function DownloadPage() {
               showExport={true}
               showPagination={true}
               itemsPerPage={25}
+              emptyStateMessage="No data downloaded yet"
+              emptyStateSubMessage="Click on a validation result to view sample data"
             />
           </div>
         )}
@@ -1713,9 +1786,9 @@ export default function DownloadPage() {
         )}
 
         {/* Data Display */}
-        {chartData && chartData.bars && chartData.bars.length > 0 ? (
-          <div className="space-y-6">
-            {/* Data Summary */}
+        <div className="space-y-6">
+          {/* Data Summary */}
+          {chartData && chartData.bars && chartData.bars.length > 0 && (
             <div className="bg-white rounded-lg shadow-sm border p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-medium text-gray-900">
@@ -1746,101 +1819,30 @@ export default function DownloadPage() {
                 </div>
               </div>
             </div>
-            
-                         {/* Dataframe Viewer */}
-             <DataframeViewer
-               data={chartData.bars.map(bar => ({
-                 timestamp: bar.timestamp,
-                 open: bar.open,
-                 high: bar.high,
-                 low: bar.low,
-                 close: bar.close,
-                 volume: bar.volume,
-                 // WAP and count columns removed
-               }))}
-               title={`Historical Data - ${chartData.symbol}`}
-               description={`${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === timeframe)?.label}`}
-               maxHeight="600px"
-               showExport={true}
-               showPagination={true}
-               itemsPerPage={25}
-             />
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="text-center py-8">
-              <div className="text-4xl mb-4">📊</div>
-              <p className="text-gray-600">No data downloaded yet</p>
-              <p className="text-sm text-gray-500 mt-2">
-                {dataQueryEnabled 
-                  ? `Select market, symbol, and timeframe, then click "Download from IB API" to fetch data`
-                  : 'Enable data querying to download historical data from IB Gateway'
-                }
-              </p>
-              {!dataQueryEnabled && (
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                  <p className="text-sm text-amber-800">
-                    Data querying is currently disabled. Enable the switch above to connect to IB Gateway.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+          
+          {/* Dataframe Viewer */}
+          <DataframeViewer
+            data={chartData?.bars?.map(bar => ({
+              timestamp: bar.timestamp,
+              open: bar.open,
+              high: bar.high,
+              low: bar.low,
+              close: bar.close,
+              volume: bar.volume,
+              // WAP and count columns removed
+            })) || []}
+            title={chartData ? `Historical Data - ${chartData.symbol}` : 'Historical Data'}
+            description={chartData ? `${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === timeframe)?.label}` : undefined}
+            maxHeight="600px"
+            showExport={true}
+            showPagination={true}
+            itemsPerPage={25}
+            emptyStateMessage="No data downloaded yet"
+            emptyStateSubMessage={dataQueryEnabled ? "Select market, symbol, and timeframe, then click 'Download from IB API' to fetch data" : "Enable data querying to download historical data from IB Gateway"}
+          />
+        </div>
 
-        {/* Bulk Collection Data Display */}
-        {bulkDisplayData && bulkDisplayData.bars && bulkDisplayData.bars.length > 0 && (
-          <div className="space-y-6">
-            {/* Bulk Data Summary */}
-            <div className="bg-white rounded-lg shadow-sm border p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-medium text-gray-900">
-                  📈 Bulk Collection Data: {bulkDisplayData.symbol}
-                </h2>
-                <button
-                  onClick={() => setBulkDisplayData(null)}
-                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded"
-                >
-                  Close View
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-                  <p className="text-green-800 font-medium">Records Retrieved</p>
-                  <p className="text-green-700">{bulkDisplayData.bars.length}</p>
-                </div>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-blue-800 font-medium">Data Source</p>
-                  <p className="text-blue-700">{bulkDisplayData.source}</p>
-                </div>
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-md">
-                  <p className="text-purple-800 font-medium">Timeframe</p>
-                  <p className="text-purple-700">{timeframes.find(tf => tf.value === bulkDisplayData.timeframe)?.label || bulkDisplayData.timeframe}</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Bulk Data Viewer */}
-            <DataframeViewer
-              data={bulkDisplayData.bars.map(bar => ({
-                timestamp: bar.timestamp,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume,
-                // WAP and count columns removed
-              }))}
-              title={`Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})`}
-              description={`${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database`}
-              maxHeight="600px"
-              showExport={true}
-              showPagination={true}
-              itemsPerPage={25}
-            />
-          </div>
-        )}
       </main>
     </div>
   );
