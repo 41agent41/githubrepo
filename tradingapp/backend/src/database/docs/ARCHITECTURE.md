@@ -43,8 +43,7 @@ Raw OHLCV data from IB Gateway
 - timeframe: Data interval ('1min', '5min', '1day', etc.)
 - open/high/low/close: Price data from IB Gateway
 - volume: Trading volume from IB Gateway
-- wap: Volume Weighted Average Price from IB Gateway
-- count: Number of trades from IB Gateway
+- WAP and count columns have been removed to simplify the data structure
 - created_at: Record creation timestamp
 ```
 
@@ -193,8 +192,7 @@ GET /api/market-data/history?symbol=MSFT&timeframe=1day&start=2024-01-01&end=202
       "low": 149.80,
       "close": 151.20,
       "volume": 1000000,
-      "wap": 150.75,
-      "count": 5000
+      // WAP and count fields removed
     }
   ],
   "metadata": {

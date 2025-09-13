@@ -106,6 +106,8 @@ export default function DownloadPage() {
   const [bulkData, setBulkData] = useState<Record<string, Record<string, any>> | null>(null);
   const [bulkDisplayData, setBulkDisplayData] = useState<HistoricalData | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
+  const [validationSampleData, setValidationSampleData] = useState<HistoricalData | null>(null);
+  const [selectedValidationItem, setSelectedValidationItem] = useState<{symbol: string, timeframe: string} | null>(null);
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [showBulkMode, setShowBulkMode] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
@@ -289,9 +291,8 @@ export default function DownloadPage() {
         high: Number(bar.high),
         low: Number(bar.low),
         close: Number(bar.close),
-        volume: Number(bar.volume || 0),
-        wap: bar.wap ? Number(bar.wap) : undefined,
-        count: bar.count ? Number(bar.count) : undefined
+        volume: Number(bar.volume || 0)
+        // WAP and count columns removed
       }));
 
       console.log('Received', data.bars.length, 'bars');
@@ -561,8 +562,7 @@ export default function DownloadPage() {
             low: parseFloat(bar.low),
             close: parseFloat(bar.close),
             volume: parseInt(bar.volume) || 0,
-            wap: bar.wap ? parseFloat(bar.wap) : undefined,
-            count: bar.count ? parseInt(bar.count) : undefined
+            // WAP and count columns removed
           };
         } catch (error) {
           console.error(`Error normalizing bar ${index}:`, error, bar);
@@ -737,6 +737,55 @@ export default function DownloadPage() {
         isValidating: false,
         error: err instanceof Error ? err.message : 'Failed to perform bulk collection' 
       });
+    }
+  };
+
+  // Fetch sample data for validation results
+  const fetchValidationSampleData = async (symbol: string, timeframe: string) => {
+    setSelectedValidationItem({ symbol, timeframe });
+    setValidationSampleData(null);
+    
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL not configured');
+      }
+
+      const response = await fetch(`${apiUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1M&account_mode=${accountMode}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data && data.bars && Array.isArray(data.bars) && data.bars.length > 0) {
+        // Take first 50 records as sample
+        const sampleData = {
+          ...data,
+          bars: data.bars.slice(0, 50).map((bar: any) => ({
+            timestamp: bar.timestamp || bar.time,
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+            volume: Number(bar.volume || 0)
+            // WAP and count columns removed
+          }))
+        };
+        setValidationSampleData(sampleData);
+      } else {
+        throw new Error('No sample data available');
+      }
+
+    } catch (err) {
+      console.error('Error fetching validation sample data:', err);
+      setError(`Failed to fetch sample data for ${symbol} ${timeframe}: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -1458,6 +1507,54 @@ export default function DownloadPage() {
               </div>
             </div>
 
+            {/* Validation Summary Table using DataframeViewer */}
+            <div className="mb-6">
+              <h4 className="font-medium text-gray-900 mb-4">Validation Summary Table</h4>
+              <div className="space-y-4">
+                <DataframeViewer
+                  data={Object.entries(validationResults.results).flatMap(([symbol, timeframes]) =>
+                    Object.entries(timeframes as Record<string, any>).map(([timeframe, result]) => ({
+                      symbol,
+                      timeframe,
+                      status: result.valid ? 'Valid' : 'Invalid',
+                      record_count: result.record_count || 0,
+                      issues: result.issues ? result.issues.join('; ') : 'None',
+                      error: result.error || 'None',
+                      invalid_ohlc_count: result.invalid_ohlc_count || 0,
+                      zero_volume_count: result.zero_volume_count || 0,
+                      negative_price_count: result.negative_price_count || 0,
+                      has_gaps: result.has_gaps ? 'Yes' : 'No'
+                    }))
+                  )}
+                  title="Validation Results Summary"
+                  description={`${validationResults.summary.total_validations} validation results across all symbols and timeframes`}
+                  maxHeight="400px"
+                  showExport={true}
+                  showPagination={true}
+                  itemsPerPage={20}
+                />
+                
+                {/* Quick Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <p className="text-sm text-gray-600 mr-2">Quick Actions:</p>
+                  {Object.entries(validationResults.results).flatMap(([symbol, timeframes]) =>
+                    Object.entries(timeframes as Record<string, any>)
+                      .filter(([, result]) => !result.valid && !result.error) // Only show for invalid results with data
+                      .map(([timeframe, result]) => (
+                        <button
+                          key={`${symbol}-${timeframe}`}
+                          onClick={() => fetchValidationSampleData(symbol, timeframe)}
+                          className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 transition-colors"
+                          title={`View sample data for ${symbol} ${timeframe} (${result.record_count} records)`}
+                        >
+                          📊 {symbol} {timeframe}
+                        </button>
+                      ))
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Detailed Results */}
             <div className="space-y-4">
               <h4 className="font-medium text-gray-900">Validation Details</h4>
@@ -1498,6 +1595,45 @@ export default function DownloadPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Validation Sample Data Viewer */}
+        {validationSampleData && selectedValidationItem && (
+          <div className="mb-6 bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                📊 Sample Data - {selectedValidationItem.symbol} ({selectedValidationItem.timeframe})
+              </h3>
+              <button
+                onClick={() => {
+                  setValidationSampleData(null);
+                  setSelectedValidationItem(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <span className="sr-only">Close</span>
+                ✕
+              </button>
+            </div>
+            
+            <DataframeViewer
+              data={validationSampleData.bars.map(bar => ({
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume
+                // WAP and count columns removed
+              }))}
+              title={`Sample Data - ${selectedValidationItem.symbol} ${selectedValidationItem.timeframe}`}
+              description={`${validationSampleData.bars.length} sample records from ${validationSampleData.source} | Account: ${validationSampleData.account_mode}`}
+              maxHeight="500px"
+              showExport={true}
+              showPagination={true}
+              itemsPerPage={25}
+            />
           </div>
         )}
 
@@ -1620,8 +1756,7 @@ export default function DownloadPage() {
                  low: bar.low,
                  close: bar.close,
                  volume: bar.volume,
-                 wap: bar.wap,
-                 count: bar.count
+                 // WAP and count columns removed
                }))}
                title={`Historical Data - ${chartData.symbol}`}
                description={`${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === timeframe)?.label}`}
@@ -1695,8 +1830,7 @@ export default function DownloadPage() {
                 low: bar.low,
                 close: bar.close,
                 volume: bar.volume,
-                wap: bar.wap,
-                count: bar.count
+                // WAP and count columns removed
               }))}
               title={`Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})`}
               description={`${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database`}

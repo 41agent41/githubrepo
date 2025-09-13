@@ -40,28 +40,30 @@ export default function DataframeViewer({
     if (!data || data.length === 0) return [];
     
     const firstRow = data[0];
-    return Object.keys(firstRow).map(key => {
-      const value = firstRow[key];
-      let type: Column['type'] = 'string';
-      
-      // Special handling for timestamp fields
-      if (key.toLowerCase() === 'timestamp' || key.toLowerCase() === 'time') {
-        type = 'date';
-      } else if (typeof value === 'number') {
-        type = 'number';
-      } else if (value instanceof Date || (typeof value === 'string' && !isNaN(Date.parse(value)))) {
-        type = 'date';
-      } else if (typeof value === 'string' && (value.includes('$') || key.toLowerCase().includes('price') || key.toLowerCase().includes('value'))) {
-        type = 'currency';
-      }
-      
-      return {
-        key,
-        label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
-        type,
-        width: type === 'date' ? '160px' : type === 'number' ? '100px' : 'auto'
-      };
-    });
+    return Object.keys(firstRow)
+      .filter(key => key.toLowerCase() !== 'wap' && key.toLowerCase() !== 'count') // Exclude WAP and count columns
+      .map(key => {
+        const value = firstRow[key];
+        let type: Column['type'] = 'string';
+        
+        // Special handling for timestamp fields
+        if (key.toLowerCase() === 'timestamp' || key.toLowerCase() === 'time') {
+          type = 'date';
+        } else if (typeof value === 'number') {
+          type = 'number';
+        } else if (value instanceof Date || (typeof value === 'string' && !isNaN(Date.parse(value)))) {
+          type = 'date';
+        } else if (typeof value === 'string' && (value.includes('$') || key.toLowerCase().includes('price') || key.toLowerCase().includes('value'))) {
+          type = 'currency';
+        }
+        
+        return {
+          key,
+          label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
+          type,
+          width: type === 'date' ? '160px' : type === 'number' ? '100px' : 'auto'
+        };
+      });
   }, [data]);
 
   // Filter and sort data

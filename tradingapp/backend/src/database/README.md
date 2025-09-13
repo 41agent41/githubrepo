@@ -100,8 +100,7 @@ GET /api/market-data/history?symbol=MSFT&timeframe=1day&start=2024-01-01&end=202
       "low": 149.80,
       "close": 151.20,
       "volume": 1000000,
-      "wap": 150.75,
-      "count": 5000
+      // WAP and count fields removed
     }
   ]
 }

@@ -9,8 +9,7 @@ export interface CandlestickBar {
   low: number;
   close: number;
   volume: number;
-  wap?: number;
-  count?: number;
+  // WAP and count fields removed
 }
 
 export interface Contract {
@@ -80,17 +79,15 @@ export class MarketDataService {
       for (const bar of bars) {
         try {
           const query = `
-            INSERT INTO candlestick_data (contract_id, timestamp, timeframe, open, high, low, close, volume, wap, count)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO candlestick_data (contract_id, timestamp, timeframe, open, high, low, close, volume)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (contract_id, timestamp, timeframe)
             DO UPDATE SET 
               open = EXCLUDED.open,
               high = EXCLUDED.high,
               low = EXCLUDED.low,
               close = EXCLUDED.close,
-              volume = EXCLUDED.volume,
-              wap = EXCLUDED.wap,
-              count = EXCLUDED.count
+              volume = EXCLUDED.volume
             RETURNING id
           `;
           
@@ -102,9 +99,7 @@ export class MarketDataService {
             bar.high,
             bar.low,
             bar.close,
-            bar.volume,
-            bar.wap || null,
-            bar.count || null
+            bar.volume
           ];
           
           const result = await client.query(query, params);
@@ -206,9 +201,7 @@ export class MarketDataService {
         cd.high,
         cd.low,
         cd.close,
-        cd.volume,
-        cd.wap,
-        cd.count
+        cd.volume
         ${includeIndicators ? `
         , MAX(CASE WHEN ti.indicator_name = 'SMA' AND ti.period = 20 THEN ti.value END) as sma_20
         , MAX(CASE WHEN ti.indicator_name = 'SMA' AND ti.period = 50 THEN ti.value END) as sma_50
@@ -228,7 +221,7 @@ export class MarketDataService {
         AND cd.timeframe = $2 
         AND cd.timestamp >= $3 
         AND cd.timestamp <= $4
-      ${includeIndicators ? 'GROUP BY cd.id, cd.timestamp, cd.open, cd.high, cd.low, cd.close, cd.volume, cd.wap, cd.count' : ''}
+      ${includeIndicators ? 'GROUP BY cd.id, cd.timestamp, cd.open, cd.high, cd.low, cd.close, cd.volume' : ''}
       ORDER BY cd.timestamp ASC
     `;
     
@@ -242,8 +235,7 @@ export class MarketDataService {
       low: parseFloat(row.low),
       close: parseFloat(row.close),
       volume: parseInt(row.volume),
-      wap: row.wap ? parseFloat(row.wap) : undefined,
-      count: row.count ? parseInt(row.count) : undefined,
+      // WAP and count fields removed
       ...(includeIndicators && {
         sma_20: row.sma_20 ? parseFloat(row.sma_20) : undefined,
         sma_50: row.sma_50 ? parseFloat(row.sma_50) : undefined,
@@ -268,9 +260,7 @@ export class MarketDataService {
         cd.high,
         cd.low,
         cd.close,
-        cd.volume,
-        cd.wap,
-        cd.count
+        cd.volume
       FROM candlestick_data cd
       JOIN contracts c ON cd.contract_id = c.id
       WHERE c.symbol = $1 AND cd.timeframe = $2
@@ -288,8 +278,7 @@ export class MarketDataService {
       low: parseFloat(row.low),
       close: parseFloat(row.close),
       volume: parseInt(row.volume),
-      wap: row.wap ? parseFloat(row.wap) : undefined,
-      count: row.count ? parseInt(row.count) : undefined,
+      // WAP and count fields removed
     }));
   }
 
@@ -442,8 +431,7 @@ export class MarketDataService {
           low: parseFloat(bar.low),
           close: parseFloat(bar.close),
           volume: parseInt(bar.volume) || 0,
-          wap: bar.wap ? parseFloat(bar.wap) : undefined,
-          count: bar.count ? parseInt(bar.count) : undefined
+          // WAP and count fields removed
         };
       } catch (error) {
         console.error(`Error processing bar ${index} for ${symbol}:`, error);

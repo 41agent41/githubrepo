@@ -58,8 +58,6 @@ CREATE TABLE IF NOT EXISTS candlestick_data (
     low DECIMAL(20,8) NOT NULL,
     close DECIMAL(20,8) NOT NULL,
     volume BIGINT NOT NULL DEFAULT 0,
-    wap DECIMAL(20,8),
-    count INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     UNIQUE(contract_id, timestamp, timeframe)
@@ -325,9 +323,7 @@ SELECT
     cd.high,
     cd.low,
     cd.close,
-    cd.volume,
-    cd.wap,
-    cd.count
+    cd.volume
 FROM candlestick_data cd
 JOIN contracts c ON cd.contract_id = c.id
 ORDER BY cd.timestamp DESC;

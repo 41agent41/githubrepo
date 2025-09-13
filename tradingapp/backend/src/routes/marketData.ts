@@ -408,9 +408,8 @@ router.get('/history', async (req: Request, res: Response) => {
           high: bar.high,
           low: bar.low,
           close: bar.close,
-          volume: bar.volume,
-          wap: bar.wap,
-          count: bar.count
+          volume: bar.volume
+          // WAP and count fields removed
         }));
 
         const storeResult = await marketDataService.storeCandlestickData(contractId, timeframe, bars);
@@ -1176,9 +1175,8 @@ router.get('/latest', async (req: Request, res: Response) => {
         high: latest.high,
         low: latest.low,
         close: latest.close,
-        volume: latest.volume,
-        wap: latest.wap,
-        count: latest.count
+        volume: latest.volume
+        // WAP and count fields removed
       },
       source: 'database',
       timestamp: new Date().toISOString()
@@ -1279,9 +1277,8 @@ router.get('/stream', async (req: Request, res: Response) => {
         high: shouldCreateNewBar ? realtimeData.last : Math.max(latestData[0].high, realtimeData.last),
         low: shouldCreateNewBar ? realtimeData.last : Math.min(latestData[0].low, realtimeData.last),
         close: realtimeData.last,
-        volume: shouldCreateNewBar ? realtimeData.volume : latestData[0].volume + realtimeData.volume,
-        wap: realtimeData.last, // Use current price as WAP for simplicity
-        count: 1
+        volume: shouldCreateNewBar ? realtimeData.volume : latestData[0].volume + realtimeData.volume
+        // WAP and count fields removed
       };
 
       // Store the new/updated bar
