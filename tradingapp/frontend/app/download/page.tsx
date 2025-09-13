@@ -722,6 +722,29 @@ export default function DownloadPage() {
 
       console.log('Bulk collection completed successfully:', result.summary);
 
+      // Automatically fetch and display the first successful result
+      if (result.summary.successful_operations > 0 && result.results) {
+        const firstSuccessfulResult = Object.entries(result.results).find(([symbol, timeframes]) => 
+          Object.values(timeframes as Record<string, any>).some((result: any) => result.records_uploaded > 0)
+        );
+        
+        if (firstSuccessfulResult) {
+          const [symbol, timeframes] = firstSuccessfulResult;
+          const successfulTimeframe = Object.entries(timeframes as Record<string, any>).find(([_, result]: [string, any]) => 
+            result.records_uploaded > 0
+          );
+          
+          if (successfulTimeframe) {
+            const [timeframe] = successfulTimeframe;
+            console.log(`Auto-displaying data for ${symbol} ${timeframe}`);
+            // Automatically fetch and display the first successful result
+            setTimeout(() => {
+              fetchBulkDataForDisplay(symbol, timeframe);
+            }, 1000); // Small delay to ensure UI updates
+          }
+        }
+      }
+
     } catch (err) {
       console.error('Error in bulk collection:', err);
       
