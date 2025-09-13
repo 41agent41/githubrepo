@@ -448,6 +448,11 @@ export default function DownloadPage() {
     setBulkResults(null);
     setError(null);
     
+    // Switch to bulk mode to ensure DataframeViewer is visible
+    setShowBulkMode(true);
+    setShowValidation(false);
+    setShowDatabaseTest(false);
+    
     performBulkCollection();
   };
 
@@ -1279,7 +1284,7 @@ export default function DownloadPage() {
         )}
 
         {/* Bulk Collection DataframeViewer */}
-        {showBulkMode && !showDatabaseTest && (
+        {(showBulkMode || downloadStatus.isBulkCollecting || bulkDisplayData || bulkData) && !showDatabaseTest && (
           <div className="mb-6">
             <DataframeViewer
               data={bulkDisplayData?.bars?.map(bar => ({
