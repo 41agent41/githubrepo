@@ -581,11 +581,23 @@ export default function DownloadPage() {
       setError(null);
       setBulkDisplayData(null); // Clear previous data
 
+      console.log('Debug - Bulk Results:', bulkResults);
+      console.log('Debug - Looking for:', symbol, timeframe);
+      
       // Get the data from bulk results
       const symbolResults = bulkResults?.results[symbol];
+      console.log('Debug - Symbol Results:', symbolResults);
+      
       const timeframeResult = symbolResults?.[timeframe];
+      console.log('Debug - Timeframe Result:', timeframeResult);
       
       if (!timeframeResult?.success || !timeframeResult?.data || !Array.isArray(timeframeResult.data)) {
+        console.log('Debug - Data check failed:', {
+          success: timeframeResult?.success,
+          hasData: !!timeframeResult?.data,
+          isArray: Array.isArray(timeframeResult?.data),
+          dataLength: timeframeResult?.data?.length
+        });
         throw new Error(`No fetched data available for ${symbol} ${timeframe}`);
       }
 
@@ -788,12 +800,16 @@ export default function DownloadPage() {
 
       // Auto-display the first successful result's fetched data
       if (result.summary.successful_operations > 0 && result.results) {
+        console.log('Debug - Auto-display: Looking for successful results in:', result.results);
+        
         const firstSuccessfulResult = Object.entries(result.results).find(([symbol, timeframes]) => 
           Object.values(timeframes as Record<string, any>).some((result: any) => result.success && result.records_fetched > 0)
         );
         
         if (firstSuccessfulResult) {
           const [symbol, timeframes] = firstSuccessfulResult;
+          console.log('Debug - Auto-display: Found successful symbol:', symbol, 'with timeframes:', timeframes);
+          
           const successfulTimeframe = Object.entries(timeframes as Record<string, any>).find(([_, result]: [string, any]) => 
             result.success && result.records_fetched > 0
           );
@@ -801,11 +817,14 @@ export default function DownloadPage() {
           if (successfulTimeframe) {
             const [timeframe] = successfulTimeframe;
             console.log(`Auto-displaying fetched data for ${symbol} ${timeframe}`);
+            console.log('Debug - Auto-display: Timeframe result:', successfulTimeframe[1]);
             // Automatically display the first successful result's fetched data
             setTimeout(() => {
               displayFetchedBulkData(symbol, timeframe);
             }, 1000); // Small delay to ensure UI updates
           }
+        } else {
+          console.log('Debug - Auto-display: No successful results found');
         }
       }
 
