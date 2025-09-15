@@ -373,7 +373,7 @@ export default function DownloadPage() {
 
   // Load data into PostgreSQL database
   const loadDataToDatabase = async () => {
-    if (!chartData || !chartData.bars || chartData.bars.length === 0) {
+    if (!chartData?.bars?.length) {
       setError('No data available to upload. Please download data first.');
       return;
     }
@@ -490,7 +490,7 @@ export default function DownloadPage() {
 
   // Handle upload button click
   const handleUploadData = () => {
-    if (!chartData || !chartData.bars || chartData.bars.length === 0) {
+    if (!chartData?.bars?.length) {
       setError('No data available to upload. Please download data first.');
       return;
     }
@@ -500,7 +500,7 @@ export default function DownloadPage() {
 
   // Load bulk collection data to PostgreSQL database
   const loadBulkDataToDatabase = async () => {
-    if (!bulkData || Object.keys(bulkData).length === 0) {
+    if (!bulkData || !Object.keys(bulkData).length) {
       setError('No bulk data available to upload. Please perform bulk collection first.');
       return;
     }
@@ -1177,7 +1177,7 @@ export default function DownloadPage() {
                   mode="single"
                   status={downloadStatus as DownloadActionStatus}
                   disabled={!dataQueryEnabled}
-                  hasData={chartData?.bars?.length > 0}
+                  hasData={!!(chartData?.bars?.length && chartData.bars.length > 0)}
                   onDownload={handleDownloadData}
                   onUpload={handleUploadData}
                 />
@@ -1207,7 +1207,7 @@ export default function DownloadPage() {
                   mode="bulk"
                   status={downloadStatus as DownloadActionStatus}
                   disabled={!dataQueryEnabled}
-                  hasBulkData={bulkData && Object.keys(bulkData).length > 0}
+                  hasBulkData={!!(bulkData && Object.keys(bulkData).length > 0)}
                   onBulkCollection={handleBulkCollection}
                   onBulkUpload={loadBulkDataToDatabase}
                 />
