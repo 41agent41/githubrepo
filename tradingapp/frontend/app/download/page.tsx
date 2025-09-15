@@ -575,17 +575,19 @@ export default function DownloadPage() {
 
   // Function to fetch and display bulk collected data from database
   // Function to display fetched data directly from bulk collection results
-  const displayFetchedBulkData = (symbol: string, timeframe: string) => {
+  const displayFetchedBulkData = (symbol: string, timeframe: string, bulkResultsData?: BulkCollectionResult) => {
     try {
       setIsLoading(true);
       setError(null);
       setBulkDisplayData(null); // Clear previous data
 
-      console.log('Debug - Bulk Results:', bulkResults);
+      // Use provided data or state data
+      const resultsToUse = bulkResultsData || bulkResults;
+      console.log('Debug - Using bulk results:', resultsToUse);
       console.log('Debug - Looking for:', symbol, timeframe);
       
       // Get the data from bulk results
-      const symbolResults = bulkResults?.results[symbol];
+      const symbolResults = resultsToUse?.results[symbol];
       console.log('Debug - Symbol Results:', symbolResults);
       
       const timeframeResult = symbolResults?.[timeframe];
@@ -781,8 +783,10 @@ export default function DownloadPage() {
         throw new Error('Invalid bulk collection result received from server');
       }
 
+      console.log('Debug - Setting bulk results:', result);
       setBulkResults(result);
       setBulkData(result.results);
+      console.log('Debug - Bulk results set, should be available for auto-display');
       
       const successRate = result.summary.total_operations > 0 
         ? (result.summary.successful_operations / result.summary.total_operations) * 100 
@@ -820,7 +824,7 @@ export default function DownloadPage() {
             console.log('Debug - Auto-display: Timeframe result:', successfulTimeframe[1]);
             // Automatically display the first successful result's fetched data
             setTimeout(() => {
-              displayFetchedBulkData(symbol, timeframe);
+              displayFetchedBulkData(symbol, timeframe, result);
             }, 1000); // Small delay to ensure UI updates
           }
         } else {
