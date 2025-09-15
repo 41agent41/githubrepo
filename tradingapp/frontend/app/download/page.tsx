@@ -1659,7 +1659,7 @@ export default function DownloadPage() {
                   Downloaded Data: {chartData.symbol}
                 </h2>
                 <div className="text-sm text-gray-500">
-                  {exchangeFilters.exchange} - {exchangeFilters.secType} | Timeframe: {timeframes.find(tf => tf.value === timeframe)?.label}
+                  {config.exchangeFilters.exchange} - {config.exchangeFilters.secType} | Timeframe: {timeframes.find(tf => tf.value === config.timeframe)?.label}
                   {chartData.last_updated && (
                     <span className="ml-4">
                       Last update: {formatTime(new Date(chartData.last_updated))}
