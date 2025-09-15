@@ -578,6 +578,7 @@ export default function DownloadPage() {
     try {
       setIsLoading(true);
       setError(null);
+      setBulkDisplayData(null); // Clear previous data
       
       const response = await fetch(`/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1Y&account_mode=${accountMode}`, {
         method: 'GET',
@@ -596,7 +597,11 @@ export default function DownloadPage() {
       
       // Validate and normalize the data
       if (!data || !data.bars || !Array.isArray(data.bars)) {
-        throw new Error('Invalid data format received from server');
+        throw new Error(`Invalid data format received from server for ${symbol} ${timeframe}`);
+      }
+
+      if (data.bars.length === 0) {
+        throw new Error(`No data available for ${symbol} ${timeframe}. The data may not have been uploaded to the database yet.`);
       }
 
       // Normalize timestamp and numeric fields
@@ -613,6 +618,7 @@ export default function DownloadPage() {
     } catch (err) {
       console.error('Error fetching bulk data for display:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch bulk data for display');
+      setBulkDisplayData(null); // Ensure data is cleared on error
     } finally {
       setIsLoading(false);
     }
@@ -743,13 +749,13 @@ export default function DownloadPage() {
       // Automatically fetch and display the first successful result
       if (result.summary.successful_operations > 0 && result.results) {
         const firstSuccessfulResult = Object.entries(result.results).find(([symbol, timeframes]) => 
-          Object.values(timeframes as Record<string, any>).some((result: any) => result.records_uploaded > 0)
+          Object.values(timeframes as Record<string, any>).some((result: any) => result.success && (result.records_uploaded > 0 || result.records_fetched > 0))
         );
         
         if (firstSuccessfulResult) {
           const [symbol, timeframes] = firstSuccessfulResult;
           const successfulTimeframe = Object.entries(timeframes as Record<string, any>).find(([_, result]: [string, any]) => 
-            result.records_uploaded > 0
+            result.success && (result.records_uploaded > 0 || result.records_fetched > 0)
           );
           
           if (successfulTimeframe) {
@@ -1222,7 +1228,7 @@ export default function DownloadPage() {
           data={bulkDisplayData?.bars ? processHistoricalDataBars(bulkDisplayData.bars) : null}
           title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : undefined}
           description={bulkDisplayData?.bars?.length ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
-          isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!bulkDisplayData || !!bulkData}
+          isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!(bulkDisplayData?.bars?.length) || !!bulkData}
           onReset={() => dataResetActions.resetBulkData()}
         />
 
@@ -1387,16 +1393,18 @@ export default function DownloadPage() {
                           <div className="font-medium">{timeframe}</div>
                           {result.success ? (
                             <div>
-                              <div>✅ {result.records_uploaded} records
+                              <div>✅ {result.records_uploaded || result.records_fetched || 0} records
                               {result.records_skipped > 0 && <span className="text-xs"> ({result.records_skipped} skipped)</span>}
                               </div>
-                              <button
-                                onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
-                                disabled={isLoading}
-                                className="mt-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {isLoading ? 'Loading...' : 'View Data'}
-                              </button>
+                              {(result.records_uploaded > 0 || result.records_fetched > 0) && (
+                                <button
+                                  onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
+                                  disabled={isLoading}
+                                  className="mt-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isLoading ? 'Loading...' : 'View Data'}
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <div>❌ {result.error}</div>
