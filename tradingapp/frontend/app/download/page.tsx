@@ -574,6 +574,47 @@ export default function DownloadPage() {
   };
 
   // Function to fetch and display bulk collected data from database
+  // Function to display fetched data directly from bulk collection results
+  const displayFetchedBulkData = (symbol: string, timeframe: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setBulkDisplayData(null); // Clear previous data
+
+      // Get the data from bulk results
+      const symbolResults = bulkResults?.results[symbol];
+      const timeframeResult = symbolResults?.[timeframe];
+      
+      if (!timeframeResult?.success || !timeframeResult?.data || !Array.isArray(timeframeResult.data)) {
+        throw new Error(`No fetched data available for ${symbol} ${timeframe}`);
+      }
+
+      // Process the fetched data
+      const normalizedBars = processHistoricalDataBars(timeframeResult.data);
+
+      const normalizedData: HistoricalData = {
+        symbol: symbol.toUpperCase(),
+        timeframe: timeframe,
+        bars: normalizedBars,
+        source: timeframeResult.source || 'IB Gateway',
+        count: normalizedBars.length,
+        account_mode: accountMode,
+        last_updated: new Date().toISOString(),
+        timestamp: new Date().toISOString()
+      };
+
+      setBulkDisplayData(normalizedData);
+      console.log(`Successfully displaying ${normalizedData.bars.length} fetched bars for ${symbol} ${timeframe}`);
+
+    } catch (err) {
+      console.error('Error displaying fetched bulk data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to display fetched bulk data');
+      setBulkDisplayData(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const fetchBulkDataForDisplay = async (symbol: string, timeframe: string) => {
     try {
       setIsLoading(true);
@@ -746,9 +787,28 @@ export default function DownloadPage() {
 
       console.log('Bulk collection completed successfully:', result.summary);
 
-      // Note: Auto-display removed since bulk collection no longer uploads to database
-      // Users can manually click "View Data" after uploading specific results
-      console.log('Bulk collection completed. Use "Load to PostgreSQL" to upload data, then "View Data" to display.');
+      // Auto-display the first successful result's fetched data
+      if (result.summary.successful_operations > 0 && result.results) {
+        const firstSuccessfulResult = Object.entries(result.results).find(([symbol, timeframes]) => 
+          Object.values(timeframes as Record<string, any>).some((result: any) => result.success && result.records_fetched > 0)
+        );
+        
+        if (firstSuccessfulResult) {
+          const [symbol, timeframes] = firstSuccessfulResult;
+          const successfulTimeframe = Object.entries(timeframes as Record<string, any>).find(([_, result]: [string, any]) => 
+            result.success && result.records_fetched > 0
+          );
+          
+          if (successfulTimeframe) {
+            const [timeframe] = successfulTimeframe;
+            console.log(`Auto-displaying fetched data for ${symbol} ${timeframe}`);
+            // Automatically display the first successful result's fetched data
+            setTimeout(() => {
+              displayFetchedBulkData(symbol, timeframe);
+            }, 1000); // Small delay to ensure UI updates
+          }
+        }
+      }
 
     } catch (err) {
       console.error('Error in bulk collection:', err);
@@ -1208,8 +1268,8 @@ export default function DownloadPage() {
           mode="bulk"
           data={bulkDisplayData?.bars ? processHistoricalDataBars(bulkDisplayData.bars) : null}
           title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : undefined}
-          description={bulkDisplayData?.bars?.length ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
-          isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!(bulkDisplayData?.bars?.length) || !!bulkData}
+          description={bulkDisplayData?.bars?.length ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source}` : undefined}
+          isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!(bulkDisplayData?.bars?.length) || !!bulkResults}
           onReset={() => dataResetActions.resetBulkData()}
         />
 
@@ -1378,20 +1438,26 @@ export default function DownloadPage() {
                               {result.records_uploaded > 0 && <span className="text-xs text-green-600"> ({result.records_uploaded} uploaded)</span>}
                               {result.records_skipped > 0 && <span className="text-xs"> ({result.records_skipped} skipped)</span>}
                               </div>
-                              {result.records_uploaded > 0 && (
-                                <button
-                                  onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
-                                  disabled={isLoading}
-                                  className="mt-1 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {isLoading ? 'Loading...' : 'View Data'}
-                                </button>
-                              )}
-                              {result.records_fetched > 0 && result.records_uploaded === 0 && (
-                                <div className="mt-1 text-xs text-gray-500">
-                                  Use "Load to PostgreSQL" to upload, then view data
-                                </div>
-                              )}
+                              <div className="mt-1 space-y-1">
+                                {result.records_fetched > 0 && (
+                                  <button
+                                    onClick={() => displayFetchedBulkData(symbol, timeframe)}
+                                    disabled={isLoading}
+                                    className="block px-2 py-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {isLoading ? 'Loading...' : 'View Fetched Data'}
+                                  </button>
+                                )}
+                                {result.records_uploaded > 0 && (
+                                  <button
+                                    onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
+                                    disabled={isLoading}
+                                    className="block px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {isLoading ? 'Loading...' : 'View DB Data'}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <div>❌ {result.error}</div>
