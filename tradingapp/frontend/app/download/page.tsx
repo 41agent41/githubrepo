@@ -5,9 +5,11 @@ import { useTradingAccount } from '../contexts/TradingAccountContext';
 import DataSwitch from '../components/DataSwitch';
 import DataframeViewer from '../components/DataframeViewer';
 import BackToHome from '../components/BackToHome';
-import ExchangeDrivenFilters from '../components/ExchangeDrivenFilters';
-import PeriodDateFilters from '../components/PeriodDateFilters';
 import DatabaseConnectivityTest from '../components/DatabaseConnectivityTest';
+import DownloadConfigPanel, { DownloadConfig } from '../components/DownloadConfigPanel';
+import DownloadActionButtons, { DownloadStatus as DownloadActionStatus } from '../components/DownloadActionButtons';
+import DownloadDataViewer from '../components/DownloadDataViewer';
+import { createDataResetFunctions, processHistoricalDataBars, validateDownloadConfig } from '../utils/downloadDataManager';
 
 interface HistoricalData {
   symbol: string;
@@ -66,29 +68,28 @@ interface HealthStatus {
 export default function DownloadPage() {
   const { isLiveTrading, accountMode, dataType } = useTradingAccount();
   
-  // Enhanced filter state
-  const [exchangeFilters, setExchangeFilters] = useState({
-    region: 'US' as 'US' | 'AU',
-    exchange: 'SMART',
-    secType: 'STK',
-    symbol: 'MSFT',
-    currency: 'USD',
-    searchTerm: ''
+  // Centralized configuration state
+  const [config, setConfig] = useState<DownloadConfig>({
+    exchangeFilters: {
+      region: 'US' as 'US' | 'AU',
+      exchange: 'SMART',
+      secType: 'STK',
+      symbol: 'MSFT',
+      currency: 'USD',
+      searchTerm: ''
+    },
+    periodFilters: {
+      period: '3M',
+      startDate: undefined,
+      endDate: undefined,
+      useDateRange: false
+    },
+    timeframe: '1hour',
+    bulkSymbols: 'MSFT,AAPL,GOOGL,AMZN,TSLA',
+    bulkTimeframes: ['1day', '1hour']
   });
   
-  const [periodFilters, setPeriodFilters] = useState<{
-    period: string;
-    startDate?: string;
-    endDate?: string;
-    useDateRange: boolean;
-  }>({
-    period: '3M',
-    startDate: undefined,
-    endDate: undefined,
-    useDateRange: false
-  });
-  
-  const [timeframe, setTimeframe] = useState('1hour');
+  // Data state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<HistoricalData | null>(null);
@@ -99,9 +100,7 @@ export default function DownloadPage() {
     isValidating: false
   });
   
-  // New state for enhanced features
-  const [bulkSymbols, setBulkSymbols] = useState('MSFT,AAPL,GOOGL,AMZN,TSLA');
-  const [bulkTimeframes, setBulkTimeframes] = useState(['1day', '1hour']);
+  // Feature-specific data state
   const [bulkResults, setBulkResults] = useState<BulkCollectionResult | null>(null);
   const [bulkData, setBulkData] = useState<Record<string, Record<string, any>> | null>(null);
   const [bulkDisplayData, setBulkDisplayData] = useState<HistoricalData | null>(null);
@@ -114,6 +113,39 @@ export default function DownloadPage() {
   const [showDatabaseTest, setShowDatabaseTest] = useState(false);
   const [databaseConnectivityStatus, setDatabaseConnectivityStatus] = useState<any>(null);
   
+  // Centralized data reset functions
+  const dataResetActions = {
+    resetSingleSymbolData: () => {
+      setChartData(null);
+      setError(null);
+    },
+    resetBulkData: () => {
+      setBulkResults(null);
+      setBulkData(null);
+      setBulkDisplayData(null);
+      setError(null);
+    },
+    resetValidationData: () => {
+      setValidationResults(null);
+      setValidationSampleData(null);
+      setSelectedValidationItem(null);
+      setError(null);
+    },
+    resetAllData: () => {
+      setChartData(null);
+      setBulkResults(null);
+      setBulkData(null);
+      setBulkDisplayData(null);
+      setValidationResults(null);
+      setValidationSampleData(null);
+      setSelectedValidationItem(null);
+      setError(null);
+    },
+    setError: (error: string | null) => {
+      setError(error);
+    }
+  };
+
   // User-configurable interval for manual operations (in seconds)
   const [operationIntervals, setOperationIntervals] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -150,6 +182,11 @@ export default function DownloadPage() {
     { label: '1 Day', value: '1day' }
   ];
 
+  // Handle configuration changes
+  const handleConfigChange = (updates: Partial<DownloadConfig>) => {
+    setConfig(prev => ({ ...prev, ...updates }));
+  };
+
   // Handle data switch toggle
   const handleDataSwitchToggle = (enabled: boolean) => {
     setDataQueryEnabled(enabled);
@@ -157,8 +194,7 @@ export default function DownloadPage() {
       localStorage.setItem('download-page-data-enabled', JSON.stringify(enabled));
     }
     if (!enabled) {
-      setError(null);
-      setChartData(null);
+      dataResetActions.resetAllData();
     }
   };
 
@@ -188,19 +224,19 @@ export default function DownloadPage() {
 
       // Build query parameters
       const params = new URLSearchParams({
-        symbol: exchangeFilters.symbol,
-        timeframe: timeframe,
-        period: periodFilters.useDateRange ? 'CUSTOM' : periodFilters.period,
+        symbol: config.exchangeFilters.symbol,
+        timeframe: config.timeframe || '1hour',
+        period: config.periodFilters.useDateRange ? 'CUSTOM' : config.periodFilters.period,
         account_mode: accountMode,
-        secType: exchangeFilters.secType,
-        exchange: exchangeFilters.exchange,
-        currency: exchangeFilters.currency
+        secType: config.exchangeFilters.secType,
+        exchange: config.exchangeFilters.exchange,
+        currency: config.exchangeFilters.currency
       });
 
       // Add date range if using custom dates
-      if (periodFilters.useDateRange && periodFilters.startDate && periodFilters.endDate) {
-        params.append('start_date', periodFilters.startDate);
-        params.append('end_date', periodFilters.endDate);
+      if (config.periodFilters.useDateRange && config.periodFilters.startDate && config.periodFilters.endDate) {
+        params.append('start_date', config.periodFilters.startDate);
+        params.append('end_date', config.periodFilters.endDate);
       }
 
       const url = `${apiUrl}/api/market-data/history?${params.toString()}`;
@@ -284,16 +320,7 @@ export default function DownloadPage() {
       }
       
       // Normalize bars data format for consistency
-      data.bars = data.bars.map((bar: any) => ({
-        ...bar,
-        timestamp: bar.timestamp || bar.time, // Handle both timestamp formats
-        open: Number(bar.open),
-        high: Number(bar.high),
-        low: Number(bar.low),
-        close: Number(bar.close),
-        volume: Number(bar.volume || 0)
-        // WAP and count columns removed
-      }));
+      data.bars = processHistoricalDataBars(data.bars);
 
       console.log('Received', data.bars.length, 'bars');
       console.log('Data validation passed - setting chart data');
@@ -379,9 +406,9 @@ export default function DownloadPage() {
           timeframe: chartData.timeframe,
           bars: chartData.bars,
           account_mode: chartData.account_mode,
-          secType: exchangeFilters.secType,
-          exchange: exchangeFilters.exchange,
-          currency: exchangeFilters.currency
+          secType: config.exchangeFilters.secType,
+          exchange: config.exchangeFilters.exchange,
+          currency: config.exchangeFilters.currency
         })
       });
 
@@ -424,29 +451,34 @@ export default function DownloadPage() {
   // Handle download button click
   const handleDownloadData = () => {
     if (!dataQueryEnabled) {
-      setError('Data querying is disabled. Please enable the switch above.');
+      dataResetActions.setError('Data querying is disabled. Please enable the switch above.');
       return;
     }
     
-    if (!exchangeFilters.symbol.trim()) {
-      setError('Please select a valid symbol');
+    // Validate configuration
+    const errors = validateDownloadConfig(config, 'single');
+    if (errors.length > 0) {
+      dataResetActions.setError(errors[0]);
       return;
     }
     
     // Reset DataframeViewer to default empty state
-    setChartData(null);
-    setError(null);
+    dataResetActions.resetSingleSymbolData();
     
     fetchHistoricalData();
   };
 
   // Handle bulk collection button click
   const handleBulkCollection = () => {
+    // Validate configuration
+    const errors = validateDownloadConfig(config, 'bulk');
+    if (errors.length > 0) {
+      dataResetActions.setError(errors[0]);
+      return;
+    }
+    
     // Reset DataframeViewer to default empty state
-    setBulkDisplayData(null);
-    setBulkData(null);
-    setBulkResults(null);
-    setError(null);
+    dataResetActions.resetBulkData();
     
     // Switch to bulk mode to ensure DataframeViewer is visible
     setShowBulkMode(true);
@@ -496,13 +528,13 @@ export default function DownloadPage() {
           'Content-Type': 'application/json',
           'X-Data-Query-Enabled': 'true'
         },
-        body: JSON.stringify({
-          bulkData: bulkData,
-          account_mode: accountMode,
-          secType: exchangeFilters.secType,
-          exchange: exchangeFilters.exchange,
-          currency: exchangeFilters.currency
-        })
+          body: JSON.stringify({
+            bulkData: bulkData,
+            account_mode: accountMode,
+            secType: config.exchangeFilters.secType,
+            exchange: config.exchangeFilters.exchange,
+            currency: config.exchangeFilters.currency
+          })
       });
 
       if (!response.ok) {
@@ -568,22 +600,7 @@ export default function DownloadPage() {
       }
 
       // Normalize timestamp and numeric fields
-      const normalizedBars = data.bars.map((bar, index) => {
-        try {
-          return {
-            timestamp: bar.timestamp || bar.time,
-            open: parseFloat(bar.open),
-            high: parseFloat(bar.high),
-            low: parseFloat(bar.low),
-            close: parseFloat(bar.close),
-            volume: parseInt(bar.volume) || 0,
-            // WAP and count columns removed
-          };
-        } catch (error) {
-          console.error(`Error normalizing bar ${index}:`, error, bar);
-          throw error;
-        }
-      });
+      const normalizedBars = processHistoricalDataBars(data.bars);
 
       const normalizedData: HistoricalData = {
         ...data,
@@ -604,19 +621,20 @@ export default function DownloadPage() {
   // Enhanced bulk collection function with improved completion detection
   const performBulkCollection = async (retryCount = 0) => {
     if (!dataQueryEnabled) {
-      setError('Data querying is disabled. Please enable the switch above.');
+      dataResetActions.setError('Data querying is disabled. Please enable the switch above.');
       return;
     }
 
-    const symbolsArray = bulkSymbols.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+    const symbolsArray = (config.bulkSymbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+    const timeframesArray = config.bulkTimeframes || [];
     
     if (symbolsArray.length === 0) {
-      setError('Please enter at least one symbol for bulk collection.');
+      dataResetActions.setError('Please enter at least one symbol for bulk collection.');
       return;
     }
 
-    if (bulkTimeframes.length === 0) {
-      setError('Please select at least one timeframe for bulk collection.');
+    if (timeframesArray.length === 0) {
+      dataResetActions.setError('Please select at least one timeframe for bulk collection.');
       return;
     }
 
@@ -636,10 +654,10 @@ export default function DownloadPage() {
         throw new Error('API URL not configured');
       }
 
-      const totalOperations = symbolsArray.length * bulkTimeframes.length;
+      const totalOperations = symbolsArray.length * timeframesArray.length;
       setDownloadStatus(prev => ({ 
         ...prev, 
-        bulkProgress: `Initiating bulk collection for ${symbolsArray.length} symbols across ${bulkTimeframes.length} timeframes (${totalOperations} total operations)...` 
+        bulkProgress: `Initiating bulk collection for ${symbolsArray.length} symbols across ${timeframesArray.length} timeframes (${totalOperations} total operations)...` 
       }));
 
       // Enhanced request with better timeout handling
@@ -662,14 +680,14 @@ export default function DownloadPage() {
         signal: controller.signal,
         body: JSON.stringify({
           symbols: symbolsArray,
-          timeframes: bulkTimeframes,
-          period: periodFilters.useDateRange ? 'CUSTOM' : periodFilters.period,
-          start_date: periodFilters.startDate,
-          end_date: periodFilters.endDate,
+          timeframes: timeframesArray,
+          period: config.periodFilters.useDateRange ? 'CUSTOM' : config.periodFilters.period,
+          start_date: config.periodFilters.startDate,
+          end_date: config.periodFilters.endDate,
           account_mode: accountMode,
-          secType: exchangeFilters.secType,
-          exchange: exchangeFilters.exchange,
-          currency: exchangeFilters.currency
+          secType: config.exchangeFilters.secType,
+          exchange: config.exchangeFilters.exchange,
+          currency: config.exchangeFilters.currency
         })
       });
 
@@ -806,15 +824,7 @@ export default function DownloadPage() {
         // Take first 50 records as sample
         const sampleData = {
           ...data,
-          bars: data.bars.slice(0, 50).map((bar: any) => ({
-            timestamp: bar.timestamp || bar.time,
-            open: Number(bar.open),
-            high: Number(bar.high),
-            low: Number(bar.low),
-            close: Number(bar.close),
-            volume: Number(bar.volume || 0)
-            // WAP and count columns removed
-          }))
+          bars: processHistoricalDataBars(data.bars.slice(0, 50))
         };
         setValidationSampleData(sampleData);
       } else {
@@ -829,23 +839,18 @@ export default function DownloadPage() {
 
   // Data validation function
   const performDataValidation = async () => {
-    const symbolsArray = bulkSymbols.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
-    
-    if (symbolsArray.length === 0) {
-      setError('Please enter at least one symbol for validation.');
+    // Validate configuration
+    const errors = validateDownloadConfig(config, 'validation');
+    if (errors.length > 0) {
+      dataResetActions.setError(errors[0]);
       return;
     }
 
-    if (bulkTimeframes.length === 0) {
-      setError('Please select at least one timeframe for validation.');
-      return;
-    }
+    const symbolsArray = (config.bulkSymbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+    const timeframesArray = config.bulkTimeframes || [];
 
     // Reset DataframeViewer to default empty state
-    setValidationResults(null);
-    setValidationSampleData(null);
-    setSelectedValidationItem(null);
-    setError(null);
+    dataResetActions.resetValidationData();
 
     setDownloadStatus({ 
       isDownloading: false, 
@@ -863,7 +868,7 @@ export default function DownloadPage() {
 
       setDownloadStatus(prev => ({ 
         ...prev, 
-        validationProgress: `Validating data for ${symbolsArray.length} symbols across ${bulkTimeframes.length} timeframes...` 
+        validationProgress: `Validating data for ${symbolsArray.length} symbols across ${timeframesArray.length} timeframes...` 
       }));
 
       const response = await fetch(`${apiUrl}/api/market-data/validate`, {
@@ -873,9 +878,9 @@ export default function DownloadPage() {
         },
         body: JSON.stringify({
           symbols: symbolsArray,
-          timeframes: bulkTimeframes,
-          start_date: periodFilters.startDate,
-          end_date: periodFilters.endDate
+          timeframes: timeframesArray,
+          start_date: config.periodFilters.startDate,
+          end_date: config.periodFilters.endDate
         })
       });
 
@@ -1157,69 +1162,25 @@ export default function DownloadPage() {
 
         {/* Single Symbol Mode */}
         {!showBulkMode && !showValidation && !showDatabaseTest && (
-          <div className="mb-6 sm:mb-8 bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Exchange-Driven Filters */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-900 mb-4">Market & Symbol</h3>
-                <ExchangeDrivenFilters
-                  onFiltersChange={setExchangeFilters}
+          <div className="mb-6 sm:mb-8">
+            <DownloadConfigPanel
+              config={config}
+              onConfigChange={handleConfigChange}
+              mode="single"
+              disabled={!dataQueryEnabled}
+              timeframes={timeframes}
+            />
+            
+            <div className="mt-4">
+              <div className="bg-white rounded-lg shadow-sm border p-4">
+                <DownloadActionButtons
+                  mode="single"
+                  status={downloadStatus as DownloadActionStatus}
                   disabled={!dataQueryEnabled}
+                  hasData={chartData?.bars?.length > 0}
+                  onDownload={handleDownloadData}
+                  onUpload={handleUploadData}
                 />
-              </div>
-
-              {/* Period & Date Filters */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-900 mb-4">Time Period</h3>
-                <PeriodDateFilters
-                  onFiltersChange={setPeriodFilters}
-                  disabled={!dataQueryEnabled}
-                />
-              </div>
-
-              {/* Timeframe & Actions */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-4">Download Settings</h3>
-                  
-                  {/* Timeframe Selection */}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Timeframe
-                    </label>
-                    <select
-                      value={timeframe}
-                      onChange={(e) => setTimeframe(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={!dataQueryEnabled}
-                    >
-                      {timeframes.map((tf) => (
-                        <option key={tf.value} value={tf.value}>
-                          {tf.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="space-y-3">
-                    <button
-                      onClick={handleDownloadData}
-                      disabled={isLoading || !dataQueryEnabled || downloadStatus.isDownloading}
-                      className="w-full px-4 py-3 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                      {downloadStatus.isDownloading ? 'Downloading...' : 'Download from IB API'}
-                    </button>
-                    
-                    <button
-                      onClick={handleUploadData}
-                      disabled={!chartData || !chartData.bars || chartData.bars.length === 0 || downloadStatus.isUploading}
-                      className="w-full px-4 py-3 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                      {downloadStatus.isUploading ? 'Uploading...' : 'Load to PostgreSQL'}
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -1227,211 +1188,94 @@ export default function DownloadPage() {
 
         {/* Bulk Collection Mode */}
         {showBulkMode && !showDatabaseTest && (
-          <div className="mb-6 sm:mb-8 bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">📈 Bulk Data Collection</h3>
+          <div className="mb-6 sm:mb-8">
+            <div className="mb-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">📈 Bulk Data Collection</h3>
+            </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Symbols Input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Symbols (comma-separated)
-                </label>
-                <textarea
-                  value={bulkSymbols}
-                  onChange={(e) => setBulkSymbols(e.target.value)}
-                  placeholder="MSFT,AAPL,GOOGL,AMZN,TSLA"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
+            <DownloadConfigPanel
+              config={config}
+              onConfigChange={handleConfigChange}
+              mode="bulk"
+              disabled={!dataQueryEnabled}
+              timeframes={timeframes}
+            />
+            
+            <div className="mt-4">
+              <div className="bg-white rounded-lg shadow-sm border p-4">
+                <DownloadActionButtons
+                  mode="bulk"
+                  status={downloadStatus as DownloadActionStatus}
                   disabled={!dataQueryEnabled}
+                  hasBulkData={bulkData && Object.keys(bulkData).length > 0}
+                  onBulkCollection={handleBulkCollection}
+                  onBulkUpload={loadBulkDataToDatabase}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter symbols separated by commas (e.g., MSFT,AAPL,GOOGL)
-                </p>
               </div>
-
-              {/* Timeframes Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Timeframes
-                </label>
-                <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2">
-                  {timeframes.map((tf) => (
-                    <label key={tf.value} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={bulkTimeframes.includes(tf.value)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setBulkTimeframes([...bulkTimeframes, tf.value]);
-                          } else {
-                            setBulkTimeframes(bulkTimeframes.filter(t => t !== tf.value));
-                          }
-                        }}
-                        disabled={!dataQueryEnabled}
-                        className="rounded"
-                      />
-                      <span className="text-sm">{tf.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Period Selection for Bulk */}
-            <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-900 mb-4">Time Period</h4>
-              <PeriodDateFilters
-                onFiltersChange={setPeriodFilters}
-                disabled={!dataQueryEnabled}
-              />
-            </div>
-
-            {/* Bulk Action Buttons */}
-            <div className="mt-6 flex space-x-4">
-              <button
-                onClick={handleBulkCollection}
-                disabled={!dataQueryEnabled || downloadStatus.isBulkCollecting}
-                className="flex-1 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {downloadStatus.isBulkCollecting ? 'Collecting...' : 'Start Bulk Collection'}
-              </button>
-              <button
-                onClick={loadBulkDataToDatabase}
-                disabled={!bulkData || Object.keys(bulkData).length === 0 || downloadStatus.isUploading}
-                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {downloadStatus.isUploading ? 'Uploading...' : 'Load to PostgreSQL'}
-              </button>
             </div>
           </div>
         )}
 
         {/* Bulk Collection DataframeViewer */}
-        {(showBulkMode || downloadStatus.isBulkCollecting || bulkDisplayData || bulkData) && !showDatabaseTest && (
-          <div className="mb-6">
-            <DataframeViewer
-              data={bulkDisplayData?.bars?.map(bar => ({
-                timestamp: bar.timestamp,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume,
-                // WAP and count columns removed
-              })) || []}
-              title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : 'Bulk Collection Data'}
-              description={bulkDisplayData ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
-              maxHeight="600px"
-              showExport={true}
-              showPagination={true}
-              itemsPerPage={25}
-              emptyStateMessage="No data downloaded yet"
-              emptyStateSubMessage="Enter required symbols, time period, and timeframe, then click 'Start Bulk Collection' to fetch data"
-            />
-          </div>
-        )}
+        <DownloadDataViewer
+          mode="bulk"
+          data={bulkDisplayData?.bars ? processHistoricalDataBars(bulkDisplayData.bars) : null}
+          title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : undefined}
+          description={bulkDisplayData ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
+          isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!bulkDisplayData || !!bulkData}
+          onReset={() => dataResetActions.resetBulkData()}
+        />
 
         {/* Data Validation Mode */}
         {showValidation && !showDatabaseTest && (
-          <div className="mb-6 sm:mb-8 bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Data Validation</h3>
+          <div className="mb-6 sm:mb-8">
+            <div className="mb-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Data Validation</h3>
+            </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Symbols Input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Symbols to Validate
-                </label>
-                <textarea
-                  value={bulkSymbols}
-                  onChange={(e) => setBulkSymbols(e.target.value)}
-                  placeholder="MSFT,AAPL,GOOGL,AMZN,TSLA"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
+            <DownloadConfigPanel
+              config={config}
+              onConfigChange={handleConfigChange}
+              mode="validation"
+              disabled={false}
+              timeframes={timeframes}
+            />
+            
+            <div className="mt-4">
+              <div className="bg-white rounded-lg shadow-sm border p-4">
+                <DownloadActionButtons
+                  mode="validation"
+                  status={downloadStatus as DownloadActionStatus}
+                  disabled={false}
+                  onValidation={performDataValidation}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter symbols to validate (comma-separated)
-                </p>
               </div>
-
-              {/* Timeframes Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Timeframes to Validate
-                </label>
-                <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2">
-                  {timeframes.map((tf) => (
-                    <label key={tf.value} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={bulkTimeframes.includes(tf.value)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setBulkTimeframes([...bulkTimeframes, tf.value]);
-                          } else {
-                            setBulkTimeframes(bulkTimeframes.filter(t => t !== tf.value));
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-sm">{tf.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Date Range for Validation */}
-            <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-900 mb-4">Validation Period</h4>
-              <PeriodDateFilters
-                onFiltersChange={setPeriodFilters}
-                disabled={false}
-              />
-            </div>
-
-            {/* Validation Action Button */}
-            <div className="mt-6">
-              <button
-                onClick={performDataValidation}
-                disabled={downloadStatus.isValidating}
-                className="w-full px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {downloadStatus.isValidating ? 'Validating...' : 'Validate Data Quality'}
-              </button>
             </div>
           </div>
         )}
 
         {/* Data Validation DataframeViewer */}
-        {showValidation && !showDatabaseTest && (
-          <div className="mb-6">
-            <DataframeViewer
-              data={validationResults ? Object.entries(validationResults.results).flatMap(([symbol, timeframes]) =>
-                Object.entries(timeframes as Record<string, any>).map(([timeframe, result]) => ({
-                  symbol,
-                  timeframe,
-                  status: result.valid ? 'Valid' : 'Invalid',
-                  record_count: result.record_count || 0,
-                  issues: result.issues ? result.issues.join('; ') : 'None',
-                  error: result.error || 'None',
-                  invalid_ohlc_count: result.invalid_ohlc_count || 0,
-                  zero_volume_count: result.zero_volume_count || 0,
-                  negative_price_count: result.negative_price_count || 0,
-                  has_gaps: result.has_gaps ? 'Yes' : 'No'
-                }))
-              ) : []}
-              title="Validation Results Summary"
-              description={validationResults ? `${validationResults.summary.total_validations} validation results across all symbols and timeframes` : undefined}
-              maxHeight="400px"
-              showExport={true}
-              showPagination={true}
-              itemsPerPage={20}
-              emptyStateMessage="No data downloaded yet"
-              emptyStateSubMessage="Enter required symbols, time period, and timeframe, then click 'Validate Data Quality' to fetch data"
-            />
-          </div>
-        )}
+        <DownloadDataViewer
+          mode="validation"
+          data={validationResults ? Object.entries(validationResults.results).flatMap(([symbol, timeframes]) =>
+            Object.entries(timeframes as Record<string, any>).map(([timeframe, result]) => ({
+              symbol,
+              timeframe,
+              status: result.valid ? 'Valid' : 'Invalid',
+              record_count: result.record_count || 0,
+              issues: result.issues ? result.issues.join('; ') : 'None',
+              error: result.error || 'None',
+              invalid_ohlc_count: result.invalid_ohlc_count || 0,
+              zero_volume_count: result.zero_volume_count || 0,
+              negative_price_count: result.negative_price_count || 0,
+              has_gaps: result.has_gaps ? 'Yes' : 'No'
+            }))
+          ) : null}
+          title="Validation Results Summary"
+          description={validationResults ? `${validationResults.summary.total_validations} validation results across all symbols and timeframes` : undefined}
+          isVisible={showValidation && !showDatabaseTest}
+          onReset={() => dataResetActions.resetValidationData()}
+        />
 
         {/* Database Connectivity Test Mode */}
         {showDatabaseTest && (
@@ -1717,15 +1561,7 @@ export default function DownloadPage() {
             </div>
             
             <DataframeViewer
-              data={validationSampleData.bars.map(bar => ({
-                timestamp: bar.timestamp,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume
-                // WAP and count columns removed
-              }))}
+              data={processHistoricalDataBars(validationSampleData.bars)}
               title={`Sample Data - ${selectedValidationItem.symbol} ${selectedValidationItem.timeframe}`}
               description={`${validationSampleData.bars.length} sample records from ${validationSampleData.source} | Account: ${validationSampleData.account_mode}`}
               maxHeight="500px"
@@ -1850,24 +1686,13 @@ export default function DownloadPage() {
           )}
           
           {/* Dataframe Viewer */}
-          <DataframeViewer
-            data={chartData?.bars?.map(bar => ({
-              timestamp: bar.timestamp,
-              open: bar.open,
-              high: bar.high,
-              low: bar.low,
-              close: bar.close,
-              volume: bar.volume,
-              // WAP and count columns removed
-            })) || []}
-            title={chartData ? `Historical Data - ${chartData.symbol}` : 'Historical Data'}
-            description={chartData ? `${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === timeframe)?.label}` : undefined}
-            maxHeight="600px"
-            showExport={true}
-            showPagination={true}
-            itemsPerPage={25}
-            emptyStateMessage="No data downloaded yet"
-            emptyStateSubMessage={dataQueryEnabled ? "Select market, symbol, and timeframe, then click 'Download from IB API' to fetch data" : "Enable data querying to download historical data from IB Gateway"}
+          <DownloadDataViewer
+            mode="single"
+            data={chartData?.bars ? processHistoricalDataBars(chartData.bars) : null}
+            title={chartData ? `Historical Data - ${chartData.symbol}` : undefined}
+            description={chartData ? `${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === config.timeframe)?.label}` : undefined}
+            isVisible={!showBulkMode && !showValidation && !showDatabaseTest}
+            onReset={() => dataResetActions.resetSingleSymbolData()}
           />
         </div>
 
