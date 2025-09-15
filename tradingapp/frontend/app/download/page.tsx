@@ -599,8 +599,7 @@ export default function DownloadPage() {
         source: timeframeResult.source || 'IB Gateway',
         count: normalizedBars.length,
         account_mode: accountMode,
-        last_updated: new Date().toISOString(),
-        timestamp: new Date().toISOString()
+        last_updated: new Date().toISOString()
       };
 
       setBulkDisplayData(normalizedData);
