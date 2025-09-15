@@ -432,7 +432,7 @@ export default function DownloadPage() {
         isUploading: false, 
         isBulkCollecting: false, 
         isValidating: false, 
-        uploadProgress: `Successfully uploaded ${result.uploaded_count || chartData.bars.length} records to database` 
+        uploadProgress: `Successfully uploaded ${result.uploaded_count || chartData?.bars?.length || 0} records to database` 
       });
 
     } catch (err) {
@@ -1221,7 +1221,7 @@ export default function DownloadPage() {
           mode="bulk"
           data={bulkDisplayData?.bars ? processHistoricalDataBars(bulkDisplayData.bars) : null}
           title={bulkDisplayData ? `Bulk Collection Data - ${bulkDisplayData.symbol} (${bulkDisplayData.timeframe})` : undefined}
-          description={bulkDisplayData ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
+          description={bulkDisplayData?.bars?.length ? `${bulkDisplayData.bars.length} records from ${bulkDisplayData.source} | Retrieved from database` : undefined}
           isVisible={showBulkMode || downloadStatus.isBulkCollecting || !!bulkDisplayData || !!bulkData}
           onReset={() => dataResetActions.resetBulkData()}
         />
@@ -1563,7 +1563,7 @@ export default function DownloadPage() {
             <DataframeViewer
               data={processHistoricalDataBars(validationSampleData.bars)}
               title={`Sample Data - ${selectedValidationItem.symbol} ${selectedValidationItem.timeframe}`}
-              description={`${validationSampleData.bars.length} sample records from ${validationSampleData.source} | Account: ${validationSampleData.account_mode}`}
+              description={validationSampleData?.bars?.length ? `${validationSampleData.bars.length} sample records from ${validationSampleData.source} | Account: ${validationSampleData.account_mode}` : undefined}
               maxHeight="500px"
               showExport={true}
               showPagination={true}
@@ -1652,7 +1652,7 @@ export default function DownloadPage() {
         {/* Data Display */}
         <div className="space-y-6">
           {/* Data Summary */}
-          {chartData && chartData.bars && chartData.bars.length > 0 && (
+          {chartData?.bars?.length && chartData.bars.length > 0 && (
             <div className="bg-white rounded-lg shadow-sm border p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-medium text-gray-900">
@@ -1671,7 +1671,7 @@ export default function DownloadPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md">
                   <p className="text-green-800 font-medium">Records Downloaded</p>
-                  <p className="text-green-700">{chartData.bars.length}</p>
+                  <p className="text-green-700">{chartData?.bars?.length || 0}</p>
                 </div>
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <p className="text-blue-800 font-medium">Data Source</p>
@@ -1690,7 +1690,7 @@ export default function DownloadPage() {
             mode="single"
             data={chartData?.bars ? processHistoricalDataBars(chartData.bars) : null}
             title={chartData ? `Historical Data - ${chartData.symbol}` : undefined}
-            description={chartData ? `${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === config.timeframe)?.label}` : undefined}
+            description={chartData?.bars?.length ? `${chartData.bars.length} records from ${chartData.source} | Timeframe: ${timeframes.find(tf => tf.value === config.timeframe)?.label}` : undefined}
             isVisible={!showBulkMode && !showValidation && !showDatabaseTest}
             onReset={() => dataResetActions.resetSingleSymbolData()}
           />
