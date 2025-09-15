@@ -839,29 +839,20 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
           });
           
           if (data && Array.isArray(bars) && bars.length > 0) {
-            // Upload to database
-            const uploadResult = await marketDataService.uploadHistoricalData({
-              symbol: symbol.toUpperCase(),
-              timeframe,
-              bars: bars,
-              account_mode: account_mode || 'paper',
-              secType: secType || 'STK',
-              exchange: exchange || 'SMART',
-              currency: currency || 'USD'
-            });
-
+            // Store fetched data without uploading to database
             results[symbol][timeframe] = {
               success: true,
               records_fetched: bars.length,
-              records_uploaded: uploadResult.uploaded_count,
-              records_skipped: uploadResult.skipped_count,
-              source: data.source || 'IB Gateway'
+              records_uploaded: 0, // No automatic upload
+              records_skipped: 0,
+              source: data.source || 'IB Gateway',
+              data: bars // Store the actual data for potential future use
             };
 
             summary.successful_operations++;
-            summary.total_records_collected += uploadResult.uploaded_count;
+            summary.total_records_collected += bars.length; // Count fetched records, not uploaded
             
-            console.log(`Successfully processed ${symbol} ${timeframe}: ${uploadResult.uploaded_count} records uploaded`);
+            console.log(`Successfully fetched ${symbol} ${timeframe}: ${bars.length} records collected`);
           } else {
             const errorMsg = `No data received from IB service - bars: ${bars.length}, response keys: ${Object.keys(data).join(', ')}`;
             console.error(`Bulk collection failed for ${symbol} ${timeframe}: ${errorMsg}`);

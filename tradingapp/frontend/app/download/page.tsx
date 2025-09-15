@@ -741,33 +741,14 @@ export default function DownloadPage() {
         isUploading: false, 
         isBulkCollecting: false, 
         isValidating: false,
-        bulkProgress: `Bulk collection completed: ${result.summary.successful_operations}/${result.summary.total_operations} operations successful (${successRate.toFixed(1)}%), ${result.summary.total_records_collected} total records collected` 
+        bulkProgress: `Bulk collection completed: ${result.summary.successful_operations}/${result.summary.total_operations} operations successful (${successRate.toFixed(1)}%), ${result.summary.total_records_collected} total records fetched` 
       });
 
       console.log('Bulk collection completed successfully:', result.summary);
 
-      // Automatically fetch and display the first successful result
-      if (result.summary.successful_operations > 0 && result.results) {
-        const firstSuccessfulResult = Object.entries(result.results).find(([symbol, timeframes]) => 
-          Object.values(timeframes as Record<string, any>).some((result: any) => result.success && (result.records_uploaded > 0 || result.records_fetched > 0))
-        );
-        
-        if (firstSuccessfulResult) {
-          const [symbol, timeframes] = firstSuccessfulResult;
-          const successfulTimeframe = Object.entries(timeframes as Record<string, any>).find(([_, result]: [string, any]) => 
-            result.success && (result.records_uploaded > 0 || result.records_fetched > 0)
-          );
-          
-          if (successfulTimeframe) {
-            const [timeframe] = successfulTimeframe;
-            console.log(`Auto-displaying data for ${symbol} ${timeframe}`);
-            // Automatically fetch and display the first successful result
-            setTimeout(() => {
-              fetchBulkDataForDisplay(symbol, timeframe);
-            }, 1000); // Small delay to ensure UI updates
-          }
-        }
-      }
+      // Note: Auto-display removed since bulk collection no longer uploads to database
+      // Users can manually click "View Data" after uploading specific results
+      console.log('Bulk collection completed. Use "Load to PostgreSQL" to upload data, then "View Data" to display.');
 
     } catch (err) {
       console.error('Error in bulk collection:', err);
@@ -1393,10 +1374,11 @@ export default function DownloadPage() {
                           <div className="font-medium">{timeframe}</div>
                           {result.success ? (
                             <div>
-                              <div>✅ {result.records_uploaded || result.records_fetched || 0} records
+                              <div>✅ {result.records_fetched || 0} records fetched
+                              {result.records_uploaded > 0 && <span className="text-xs text-green-600"> ({result.records_uploaded} uploaded)</span>}
                               {result.records_skipped > 0 && <span className="text-xs"> ({result.records_skipped} skipped)</span>}
                               </div>
-                              {(result.records_uploaded > 0 || result.records_fetched > 0) && (
+                              {result.records_uploaded > 0 && (
                                 <button
                                   onClick={() => fetchBulkDataForDisplay(symbol, timeframe)}
                                   disabled={isLoading}
@@ -1404,6 +1386,11 @@ export default function DownloadPage() {
                                 >
                                   {isLoading ? 'Loading...' : 'View Data'}
                                 </button>
+                              )}
+                              {result.records_fetched > 0 && result.records_uploaded === 0 && (
+                                <div className="mt-1 text-xs text-gray-500">
+                                  Use "Load to PostgreSQL" to upload, then view data
+                                </div>
                               )}
                             </div>
                           ) : (
