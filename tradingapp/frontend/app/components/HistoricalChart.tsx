@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
 import DataframeViewer from './DataframeViewer';
 
@@ -24,6 +24,8 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -31,7 +33,7 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: chartContainerRef.current.clientHeight || 400,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#333',
@@ -100,6 +102,7 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
       if (chart && chartContainerRef.current) {
         chart.applyOptions({
           width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight || 400,
         });
       }
     };
@@ -129,6 +132,70 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
       });
     }
   }, [symbol]);
+
+  // Fullscreen functionality
+  const toggleFullscreen = async () => {
+    if (!fullscreenContainerRef.current) return;
+
+    try {
+      if (!isFullscreen) {
+        // Enter fullscreen
+        if (fullscreenContainerRef.current.requestFullscreen) {
+          await fullscreenContainerRef.current.requestFullscreen();
+        } else if ((fullscreenContainerRef.current as any).webkitRequestFullscreen) {
+          await (fullscreenContainerRef.current as any).webkitRequestFullscreen();
+        } else if ((fullscreenContainerRef.current as any).msRequestFullscreen) {
+          await (fullscreenContainerRef.current as any).msRequestFullscreen();
+        }
+      } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+    }
+  };
+
+  // Handle fullscreen change events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).msFullscreenElement
+      );
+      
+      setIsFullscreen(isCurrentlyFullscreen);
+      
+      // Resize chart when entering/exiting fullscreen
+      if (chartRef.current && chartContainerRef.current) {
+        setTimeout(() => {
+          if (chartRef.current && chartContainerRef.current) {
+            chartRef.current.applyOptions({
+              width: chartContainerRef.current.clientWidth,
+              height: isCurrentlyFullscreen ? window.innerHeight - 100 : 400,
+            });
+          }
+        }, 100);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Update chart data when data changes
   useEffect(() => {
@@ -160,14 +227,54 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
   }, [data]);
 
   return (
-    <div className="w-full h-full">
+    <div 
+      ref={fullscreenContainerRef}
+      className={`w-full h-full ${isFullscreen ? 'bg-white p-4' : ''}`}
+    >
+      {/* Fullscreen Controls */}
+      <div className={`flex justify-between items-center ${isFullscreen ? 'mb-4' : 'mb-2'}`}>
+        <div className="flex items-center gap-4">
+          {data.length > 0 && (
+            <div className="text-xs text-gray-500">
+              Data points: {data.length} | Timeframe: {timeframe}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={toggleFullscreen}
+          className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+        >
+          {isFullscreen ? (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Exit Fullscreen
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+              </svg>
+              Fullscreen
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Chart Container */}
       <div 
         ref={chartContainerRef} 
-        className="w-full h-full"
+        className={`w-full ${isFullscreen ? 'h-full' : 'h-96'}`}
+        style={{ 
+          height: isFullscreen ? 'calc(100vh - 120px)' : '400px'
+        }}
       />
-      {data.length > 0 && (
+      
+      {/* Chart Legend - only show when not in fullscreen */}
+      {data.length > 0 && !isFullscreen && (
         <div className="mt-2 text-xs text-gray-500 space-y-1">
-          <div>Data points: {data.length} | Timeframe: {timeframe}</div>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <div className="w-3 h-3 bg-green-500 rounded"></div>
@@ -178,28 +285,6 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
               Bear Bars (Red)
             </span>
           </div>
-        </div>
-      )}
-      
-      {/* Dataframe Display */}
-      {data.length > 0 && (
-        <div className="mt-6">
-          <DataframeViewer
-            data={data.map(bar => ({
-              time: new Date(bar.time * 1000).toLocaleString(),
-              open: bar.open,
-              high: bar.high,
-              low: bar.low,
-              close: bar.close,
-              volume: bar.volume
-            }))}
-            title={`${symbol} Historical Data`}
-            description={`${data.length} data points for ${timeframe} timeframe`}
-            maxHeight="400px"
-            showExport={true}
-            showPagination={true}
-            itemsPerPage={25}
-          />
         </div>
       )}
     </div>

@@ -313,6 +313,8 @@ export default function HistoricalChartPage() {
 
       const data: HistoricalData = await response.json();
       console.log('Historical data received:', data);
+      console.log('Symbol from response:', data.symbol);
+      console.log('Symbol from input:', exchangeFilters.symbol);
       
       if (!data.bars || !Array.isArray(data.bars)) {
         throw new Error('No bars data received from API');
@@ -528,12 +530,62 @@ export default function HistoricalChartPage() {
               </div>
               
               {/* TradingView Chart */}
-              <div className="h-96 border border-gray-200 rounded">
+              <div className="border border-gray-200 rounded">
                 <HistoricalChart 
                   data={processedBars}
                   symbol={chartData.symbol}
                   timeframe={chartData.timeframe}
                 />
+              </div>
+              
+              {/* Dataframe Display */}
+              <div className="mt-6">
+                <div className="bg-white rounded-lg border p-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Historical Data Table</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Open</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">High</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Low</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Close</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {processedBars.slice(-10).map((bar, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(bar.time * 1000).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {bar.open.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {bar.high.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {bar.low.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {bar.close.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {bar.volume.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {processedBars.length > 10 && (
+                      <div className="mt-4 text-sm text-gray-500 text-center">
+                        Showing last 10 of {processedBars.length} data points
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ) : chartData && processedBars.length === 0 ? (
