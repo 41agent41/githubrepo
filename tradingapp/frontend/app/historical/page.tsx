@@ -36,7 +36,7 @@ export default function HistoricalChartPage() {
     region: 'US' as 'US' | 'AU',
     exchange: 'SMART',
     secType: 'STK',
-    symbol: 'MSFT',
+    symbol: '',
     currency: 'USD',
     searchTerm: ''
   });
@@ -93,6 +93,41 @@ export default function HistoricalChartPage() {
       setError(null);
       setChartData(null);
       setProcessedBars([]);
+    }
+  };
+  
+  // Validate symbol via backend search endpoint before fetching
+  const validateSymbol = async (): Promise<boolean> => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL not configured');
+      }
+
+      const response = await fetch(`${apiUrl}/api/market-data/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          symbol: exchangeFilters.symbol,
+          secType: exchangeFilters.secType,
+          exchange: exchangeFilters.exchange,
+          currency: exchangeFilters.currency,
+          account_mode: accountMode
+        })
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
+      const results = Array.isArray(data?.results) ? data.results : [];
+      return (contracts.length > 0) || (results.length > 0);
+    } catch (e) {
+      return false;
     }
   };
 
@@ -192,6 +227,12 @@ export default function HistoricalChartPage() {
   const fetchHistoricalData = async () => {
     if (!dataQueryEnabled) {
       console.log('Data querying disabled');
+      setIsLoading(false);
+      return;
+    }
+    
+    if (!exchangeFilters.symbol || !exchangeFilters.symbol.trim()) {
+      setError('Symbol is required.');
       setIsLoading(false);
       return;
     }
@@ -301,11 +342,25 @@ export default function HistoricalChartPage() {
     }
     
     if (!exchangeFilters.symbol.trim()) {
-      setError('Please select a valid symbol');
+      setError('Symbol is required.');
       return;
     }
-    
-    fetchHistoricalData();
+
+    setIsLoading(true);
+    setError(null);
+    validateSymbol()
+      .then((isValid) => {
+        if (!isValid) {
+          setError('Symbol not found. Please check the symbol and market.');
+          setIsLoading(false);
+          return;
+        }
+        fetchHistoricalData();
+      })
+      .catch(() => {
+        setError('Unable to validate symbol. Please try again.');
+        setIsLoading(false);
+      });
   };
 
   // Helper function to format time
@@ -410,7 +465,7 @@ export default function HistoricalChartPage() {
                 <div className="mt-6">
                   <button
                     onClick={handleLoadData}
-                    disabled={isLoading || !dataQueryEnabled}
+                    disabled={isLoading || !dataQueryEnabled || !exchangeFilters.symbol.trim()}
                     className="w-full px-4 py-3 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
                     {isLoading ? 'Loading...' : 'Load Historical Data'}
@@ -429,7 +484,7 @@ export default function HistoricalChartPage() {
               <p className="text-sm text-red-800">{error}</p>
             </div>
             <button
-              onClick={fetchHistoricalData}
+              onClick={handleLoadData}
               className="mt-2 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
             >
               Retry
@@ -441,7 +496,7 @@ export default function HistoricalChartPage() {
         <div className="bg-white rounded-lg shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-gray-900">
-              Historical Chart: {exchangeFilters.symbol}
+              Historical Chart: {exchangeFilters.symbol || '—'}
             </h2>
             <div className="text-sm text-gray-500">
               {exchangeFilters.exchange} - {exchangeFilters.secType} | Timeframe: {timeframes.find(tf => tf.value === timeframe)?.label}
