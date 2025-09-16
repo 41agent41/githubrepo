@@ -499,7 +499,7 @@ export default function HistoricalChartPage() {
         <div className="bg-white rounded-lg shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-gray-900">
-              Historical Chart: {exchangeFilters.symbol || '—'}
+              Historical Chart: {chartData?.symbol || exchangeFilters.symbol || '—'}
             </h2>
             <div className="text-sm text-gray-500">
               {exchangeFilters.exchange} - {exchangeFilters.secType} | Timeframe: {timeframes.find(tf => tf.value === timeframe)?.label}

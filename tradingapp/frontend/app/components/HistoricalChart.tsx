@@ -51,6 +51,14 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
         timeVisible: true,
         secondsVisible: false,
       },
+      watermark: {
+        color: 'rgba(11, 94, 29, 0.4)',
+        visible: true,
+        text: symbol,
+        fontSize: 24,
+        horzAlign: 'center',
+        vertAlign: 'center',
+      },
     });
 
     chartRef.current = chart;
@@ -105,6 +113,22 @@ export default function HistoricalChart({ data, symbol, timeframe }: HistoricalC
       }
     };
   }, []);
+
+  // Update watermark when symbol changes
+  useEffect(() => {
+    if (chartRef.current && symbol) {
+      chartRef.current.applyOptions({
+        watermark: {
+          color: 'rgba(11, 94, 29, 0.4)',
+          visible: true,
+          text: symbol,
+          fontSize: 24,
+          horzAlign: 'center',
+          vertAlign: 'center',
+        },
+      });
+    }
+  }, [symbol]);
 
   // Update chart data when data changes
   useEffect(() => {
