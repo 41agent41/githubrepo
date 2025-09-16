@@ -126,8 +126,8 @@ export default function HistoricalChartPage() {
 
       const data = await response.json();
       console.log('Symbol validation response:', data);
-      const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
-      return contracts.length > 0;
+      const results = Array.isArray(data?.results) ? data.results : [];
+      return results.length > 0;
     } catch (e) {
       console.error('Symbol validation error:', e);
       return false;

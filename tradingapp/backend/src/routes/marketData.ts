@@ -100,7 +100,7 @@ router.post('/search', async (req: Request, res: Response) => {
 
     console.log(`Searching for contract: ${symbol} (${secType}) on ${exchange || 'any exchange'}`);
 
-    const response = await axios.post(`${IB_SERVICE_URL}/market-data/search`, {
+    const response = await axios.post(`${IB_SERVICE_URL}/contract/search`, {
       symbol: symbol,
       secType: secType,
       exchange: exchange,
@@ -114,11 +114,11 @@ router.post('/search', async (req: Request, res: Response) => {
       }
     });
 
-    console.log(`Found ${response.data?.contracts?.length || 0} contracts for ${symbol}`);
+    console.log(`Found ${response.data?.results?.length || 0} contracts for ${symbol}`);
 
     // Store contracts in database for future reference
-    if (response.data?.contracts && Array.isArray(response.data.contracts)) {
-      for (const contract of response.data.contracts) {
+    if (response.data?.results && Array.isArray(response.data.results)) {
+      for (const contract of response.data.results) {
         try {
           const contractData: Contract = {
             symbol: contract.symbol,
@@ -202,7 +202,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
 
     console.log(`Advanced search for: ${secType} ${symbol || ''} on ${exchange || 'any exchange'}`);
 
-    const response = await axios.post(`${IB_SERVICE_URL}/market-data/search/advanced`, {
+    const response = await axios.post(`${IB_SERVICE_URL}/contract/advanced-search`, {
       symbol: symbol,
       secType: secType,
       exchange: exchange,
@@ -221,11 +221,11 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
       }
     });
 
-    console.log(`Advanced search found ${response.data?.contracts?.length || 0} contracts`);
+    console.log(`Advanced search found ${response.data?.results?.length || 0} contracts`);
 
     // Store contracts in database
-    if (response.data?.contracts && Array.isArray(response.data.contracts)) {
-      for (const contract of response.data.contracts) {
+    if (response.data?.results && Array.isArray(response.data.results)) {
+      for (const contract of response.data.results) {
         try {
           const contractData: Contract = {
             symbol: contract.symbol,
