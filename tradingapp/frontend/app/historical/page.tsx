@@ -107,7 +107,8 @@ export default function HistoricalChartPage() {
       const response = await fetch(`${apiUrl}/api/market-data/search`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true'
         },
         body: JSON.stringify({
           symbol: exchangeFilters.symbol,
@@ -119,14 +120,16 @@ export default function HistoricalChartPage() {
       });
 
       if (!response.ok) {
+        console.error('Symbol validation failed:', response.status, response.statusText);
         return false;
       }
 
       const data = await response.json();
+      console.log('Symbol validation response:', data);
       const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
-      const results = Array.isArray(data?.results) ? data.results : [];
-      return (contracts.length > 0) || (results.length > 0);
+      return contracts.length > 0;
     } catch (e) {
+      console.error('Symbol validation error:', e);
       return false;
     }
   };
