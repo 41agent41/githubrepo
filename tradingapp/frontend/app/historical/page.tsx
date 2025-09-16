@@ -313,8 +313,6 @@ export default function HistoricalChartPage() {
 
       const data: HistoricalData = await response.json();
       console.log('Historical data received:', data);
-      console.log('Symbol from response:', data.symbol);
-      console.log('Symbol from input:', exchangeFilters.symbol);
       
       if (!data.bars || !Array.isArray(data.bars)) {
         throw new Error('No bars data received from API');
