@@ -109,12 +109,12 @@ export default function DownloadPage() {
   const isRequestActive = (key: string) => activeRequests.has(key);
   
   const addActiveRequest = (key: string) => {
-    setActiveRequests(prev => new Set([...prev, key]));
+    setActiveRequests(prev => new Set([...Array.from(prev), key]));
   };
   
   const removeActiveRequest = (key: string) => {
     setActiveRequests(prev => {
-      const newSet = new Set(prev);
+      const newSet = new Set(Array.from(prev));
       newSet.delete(key);
       return newSet;
     });
@@ -189,9 +189,8 @@ export default function DownloadPage() {
     return true;
   });
 
-  // Updated timeframes to match backend API expectations
+  // Updated timeframes for historical data (tick data handled by streaming functions)
   const timeframes = [
-    { label: 'Tick Data', value: 'tick' },
     { label: '1 Minute', value: '1min' },
     { label: '5 Minutes', value: '5min' },
     { label: '15 Minutes', value: '15min' },

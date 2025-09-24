@@ -316,21 +316,14 @@ router.get('/history', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate timeframe
-    const validTimeframes = ['tick', '1min', '5min', '15min', '30min', '1hour', '4hour', '8hour', '1day'];
+    // Validate timeframe (tick data handled by streaming functions)
+    const validTimeframes = ['1min', '5min', '15min', '30min', '1hour', '4hour', '8hour', '1day'];
     if (!validTimeframes.includes(timeframe)) {
       return res.status(400).json({
         error: 'Invalid timeframe',
         valid_timeframes: validTimeframes,
         received: timeframe
       });
-    }
-
-    // Special handling for tick data - convert to minute data for database compatibility
-    let processedTimeframe = timeframe;
-    if (timeframe === 'tick') {
-      console.log('Converting tick data request to 1min for IB Gateway compatibility');
-      processedTimeframe = '1min';
     }
 
     // Check if we should use database first
@@ -372,12 +365,12 @@ router.get('/history', async (req: Request, res: Response) => {
     }
 
     // Fallback to IB service
-    console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period} (processed: ${processedTimeframe})`);
+    console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period}`);
 
     const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
       params: {
         symbol: symbol,
-        timeframe: processedTimeframe,
+        timeframe: timeframe,
         period: period,
         account_mode: account_mode,
         start_date: start_date,
@@ -811,16 +804,9 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
         try {
           console.log(`Collecting ${symbol} ${timeframe}...`);
           
-          // Special handling for tick data - convert to minute data for IB Gateway compatibility
-          let processedTimeframe = timeframe;
-          if (timeframe === 'tick') {
-            console.log(`Converting tick data request to 1min for IB Gateway compatibility in bulk collection`);
-            processedTimeframe = '1min';
-          }
-          
           const requestParams = {
             symbol: symbol.toUpperCase(),
-            timeframe: processedTimeframe,
+            timeframe: timeframe,
             period: period || '1Y',
             account_mode: account_mode || 'paper',
             secType: secType || 'STK',

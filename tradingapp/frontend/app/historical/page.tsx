@@ -70,9 +70,8 @@ export default function HistoricalChartPage() {
     return true; // Default to true (enabled)
   });
 
-  // Updated timeframes to match backend API expectations
+  // Updated timeframes for historical data (tick data handled by streaming functions)
   const timeframes = [
-    { label: 'Tick Data', value: 'tick' },
     { label: '1 Minute', value: '1min' },
     { label: '5 Minutes', value: '5min' },
     { label: '15 Minutes', value: '15min' },
