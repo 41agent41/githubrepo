@@ -100,6 +100,26 @@ export default function DownloadPage() {
     isValidating: false
   });
   
+  // Request tracking to prevent duplicate API calls
+  const [activeRequests, setActiveRequests] = useState<Set<string>>(new Set());
+  
+  const createRequestKey = (symbol: string, timeframe: string, period: string) => 
+    `${symbol}-${timeframe}-${period}`;
+  
+  const isRequestActive = (key: string) => activeRequests.has(key);
+  
+  const addActiveRequest = (key: string) => {
+    setActiveRequests(prev => new Set([...prev, key]));
+  };
+  
+  const removeActiveRequest = (key: string) => {
+    setActiveRequests(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(key);
+      return newSet;
+    });
+  };
+  
   // Feature-specific data state
   const [bulkResults, setBulkResults] = useState<BulkCollectionResult | null>(null);
   const [bulkData, setBulkData] = useState<Record<string, Record<string, any>> | null>(null);
@@ -206,6 +226,26 @@ export default function DownloadPage() {
       return;
     }
     
+    if (!config.exchangeFilters.symbol || !config.exchangeFilters.symbol.trim()) {
+      setError('Symbol is required.');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Create request key to prevent duplicates
+    const requestKey = createRequestKey(
+      config.exchangeFilters.symbol,
+      config.timeframe || '1hour',
+      config.periodFilters.useDateRange ? 'CUSTOM' : config.periodFilters.period
+    );
+    
+    // Check if this exact request is already active
+    if (isRequestActive(requestKey)) {
+      console.log('Request already active, skipping duplicate:', requestKey);
+      return;
+    }
+    
+    addActiveRequest(requestKey);
     setIsLoading(true);
     setError(null);
     setDownloadStatus({ 
@@ -368,6 +408,7 @@ export default function DownloadPage() {
       });
     } finally {
       setIsLoading(false);
+      removeActiveRequest(requestKey);
     }
   };
 
@@ -452,6 +493,11 @@ export default function DownloadPage() {
   const handleDownloadData = () => {
     if (!dataQueryEnabled) {
       dataResetActions.setError('Data querying is disabled. Please enable the switch above.');
+      return;
+    }
+    
+    if (!config.exchangeFilters.symbol.trim()) {
+      dataResetActions.setError('Symbol is required.');
       return;
     }
     

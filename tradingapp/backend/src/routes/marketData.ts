@@ -326,6 +326,13 @@ router.get('/history', async (req: Request, res: Response) => {
       });
     }
 
+    // Special handling for tick data - convert to minute data for database compatibility
+    let processedTimeframe = timeframe;
+    if (timeframe === 'tick') {
+      console.log('Converting tick data request to 1min for IB Gateway compatibility');
+      processedTimeframe = '1min';
+    }
+
     // Check if we should use database first
     const useDatabase = use_database === 'true';
     const includeIndicators = include_indicators === 'true';
@@ -365,12 +372,12 @@ router.get('/history', async (req: Request, res: Response) => {
     }
 
     // Fallback to IB service
-    console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period}`);
+    console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period} (processed: ${processedTimeframe})`);
 
     const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
       params: {
         symbol: symbol,
-        timeframe: timeframe,
+        timeframe: processedTimeframe,
         period: period,
         account_mode: account_mode,
         start_date: start_date,
@@ -804,9 +811,16 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
         try {
           console.log(`Collecting ${symbol} ${timeframe}...`);
           
+          // Special handling for tick data - convert to minute data for IB Gateway compatibility
+          let processedTimeframe = timeframe;
+          if (timeframe === 'tick') {
+            console.log(`Converting tick data request to 1min for IB Gateway compatibility in bulk collection`);
+            processedTimeframe = '1min';
+          }
+          
           const requestParams = {
             symbol: symbol.toUpperCase(),
-            timeframe,
+            timeframe: processedTimeframe,
             period: period || '1Y',
             account_mode: account_mode || 'paper',
             secType: secType || 'STK',
