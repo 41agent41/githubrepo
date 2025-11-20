@@ -7,6 +7,7 @@ import accountRoutes from './routes/account.js';
 import settingsRoutes from './routes/settings.js';
 import databaseRoutes from './routes/database.js';
 import constraintTestRoutes from './routes/constraint-test.js';
+import tradingSetupRoutes from './routes/tradingSetup.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
 
@@ -115,6 +116,7 @@ app.use('/api/account', accountRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/constraint-test', constraintTestRoutes);
+app.use('/api/trading-setup', tradingSetupRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -175,6 +177,23 @@ io.on('connection', (socket) => {
       console.error('Unsubscription error:', error);
       socket.emit('unsubscription-error', { 
         symbol, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  // Handle trading setup subscription
+  socket.on('subscribe-setup', async (data) => {
+    const { setup_id } = data;
+    console.log(`Client ${socket.id} subscribing to setup ${setup_id}`);
+    
+    try {
+      socket.join(`setup-${setup_id}`);
+      socket.emit('subscription-confirmed', { setup_id, type: 'setup' });
+    } catch (error) {
+      console.error('Setup subscription error:', error);
+      socket.emit('subscription-error', { 
+        setup_id, 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
     }

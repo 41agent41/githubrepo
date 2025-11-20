@@ -82,6 +82,19 @@ export default function HomePage() {
               </div>
             </div>
           </a>
+          
+          <a 
+            href="/configure" 
+            className="block p-4 sm:p-6 lg:p-8 bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow duration-200"
+          >
+            <div className="flex items-start sm:items-center">
+              <div className="text-2xl sm:text-3xl lg:text-4xl mr-3 sm:mr-4 flex-shrink-0">⚙️</div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg lg:text-xl font-medium text-gray-900 truncate">Trading Setup</h3>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1 line-clamp-2">Configure symbol, timeframes, indicators, and strategies</p>
+              </div>
+            </div>
+          </a>
         </div>
 
         {/* Trading Account Mode Section */}
