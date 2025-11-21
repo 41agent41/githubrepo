@@ -8,8 +8,14 @@ import settingsRoutes from './routes/settings.js';
 import databaseRoutes from './routes/database.js';
 import constraintTestRoutes from './routes/constraint-test.js';
 import tradingSetupRoutes from './routes/tradingSetup.js';
+import marketDataCollectionRoutes from './routes/marketDataCollection.js';
+import strategiesRoutes from './routes/strategies.js';
+import tradingRoutes from './routes/trading.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
+import { backgroundJobs } from './services/backgroundJobs.js';
+import { strategyService, setBroadcastStrategySignal } from './services/strategyService.js';
+import { orderService, setBroadcastOrderStatus } from './services/orderService.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -117,6 +123,9 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/constraint-test', constraintTestRoutes);
 app.use('/api/trading-setup', tradingSetupRoutes);
+app.use('/api/market-data', marketDataCollectionRoutes);
+app.use('/api/strategies', strategiesRoutes);
+app.use('/api/trading', tradingRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -129,6 +138,10 @@ app.get('/', (req, res) => {
       database_connectivity: '/api/database/connectivity-test',
       constraint_test: '/api/constraint-test/test-constraints',
       market_data: '/api/market-data',
+      market_data_collection: '/api/market-data/auto-collect',
+      trading_setup: '/api/trading-setup',
+      strategies: '/api/strategies',
+      trading: '/api/trading',
       settings: '/api/settings'
     }
   });
@@ -199,10 +212,55 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle order subscription
+  socket.on('subscribe-order', async (data) => {
+    const { order_id } = data;
+    console.log(`Client ${socket.id} subscribing to order ${order_id}`);
+    
+    try {
+      socket.join(`order-${order_id}`);
+      socket.emit('subscription-confirmed', { order_id, type: 'order' });
+    } catch (error) {
+      console.error('Order subscription error:', error);
+      socket.emit('subscription-error', { 
+        order_id, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
   });
 });
+
+// Helper function to broadcast strategy signals via WebSocket
+function broadcastStrategySignal(signal: any) {
+  io.to(`setup-${signal.setupId}`).emit('strategy-signal', {
+    setup_id: signal.setupId,
+    timeframe: signal.timeframe,
+    strategy: signal.strategyName,
+    signal_type: signal.signalType,
+    price: signal.price,
+    confidence: signal.confidence,
+    timestamp: signal.timestamp,
+    indicator_values: signal.indicatorValues
+  });
+}
+
+// Helper function to broadcast order status updates via WebSocket
+function broadcastOrderStatus(order: any) {
+  if (order.setupId) {
+    io.to(`setup-${order.setupId}`).emit('order-status', order);
+  }
+  if (order.id) {
+    io.to(`order-${order.id}`).emit('order-status', order);
+  }
+}
+
+// Set broadcast functions in services
+setBroadcastStrategySignal(broadcastStrategySignal);
+setBroadcastOrderStatus(broadcastOrderStatus);
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -232,6 +290,14 @@ server.listen(PORT, '0.0.0.0', () => {
   dbService.testConnection().then(connected => {
     if (connected) {
       console.log('Database connection established');
+      
+      // Start background jobs for automatic data collection and strategy calculation
+      try {
+        backgroundJobs.startAll();
+        console.log('Background jobs started: data collection and strategy calculation');
+      } catch (error) {
+        console.error('Error starting background jobs:', error);
+      }
     } else {
       console.warn('Database connection failed - some features may be limited');
     }

@@ -2578,6 +2578,188 @@ async def clear_cache():
     logger.info(f"Symbol cache cleared. Removed {cache_size} entries.")
     return {"message": f"Cache cleared. Removed {cache_size} entries."}
 
+# Order placement functions
+def place_order_sync(symbol: str, action: str, quantity: float, order_type: str = "MKT", 
+                     limit_price: float = None, stop_price: float = None):
+    """Place order through IB Gateway using TWS API"""
+    try:
+        ib = get_ib_connection()
+        
+        # Verify connection health
+        if not verify_connection_health(ib):
+            raise Exception("TWS API connection is not healthy - reconnection required")
+        
+        # Wait for next valid order ID if not available
+        if ib.next_order_id is None:
+            logger.info("Waiting for next valid order ID...")
+            time.sleep(2)
+            if ib.next_order_id is None:
+                raise Exception("Could not obtain valid order ID from IB Gateway")
+        
+        order_id = ib.next_order_id
+        ib.next_order_id = None  # Clear to get next ID
+        
+        # Create contract
+        contract = create_contract(symbol)
+        
+        # Request contract details to qualify the contract
+        ib.contracts = []
+        ib.reqContractDetails(12, contract)
+        time.sleep(2)
+        
+        if not ib.contracts:
+            raise Exception(f"Symbol {symbol} not found or cannot be qualified")
+        
+        qualified_contract = ib.contracts[0]
+        logger.info(f"Using qualified contract: {qualified_contract.symbol} (conId: {qualified_contract.conId})")
+        
+        # Create order
+        order = Order()
+        order.action = action.upper()  # BUY or SELL
+        order.totalQuantity = quantity
+        order.orderType = order_type.upper()  # MKT, LMT, STP
+        
+        if order_type.upper() == "LMT" and limit_price:
+            order.lmtPrice = limit_price
+        elif order_type.upper() == "STP" and stop_price:
+            order.auxPrice = stop_price
+        elif order_type.upper() == "STP LMT" and limit_price and stop_price:
+            order.lmtPrice = limit_price
+            order.auxPrice = stop_price
+        
+        # Place order
+        logger.info(f"Placing {action} order: {quantity} shares of {symbol}, type: {order_type}")
+        ib.placeOrder(order_id, qualified_contract, order)
+        
+        # Wait a moment for order confirmation
+        time.sleep(1)
+        
+        logger.info(f"Order {order_id} placed successfully")
+        
+        return {
+            "order_id": order_id,
+            "symbol": symbol,
+            "action": action.upper(),
+            "quantity": quantity,
+            "order_type": order_type.upper(),
+            "status": "submitted",
+            "contract": {
+                "symbol": qualified_contract.symbol,
+                "conId": qualified_contract.conId,
+                "secType": qualified_contract.secType,
+                "exchange": qualified_contract.exchange
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error placing order: {e}")
+        raise Exception(f"Failed to place order: {str(e)}")
+
+def cancel_order_sync(order_id: int):
+    """Cancel order through IB Gateway"""
+    try:
+        ib = get_ib_connection()
+        
+        if not verify_connection_health(ib):
+            raise Exception("TWS API connection is not healthy - reconnection required")
+        
+        logger.info(f"Cancelling order {order_id}")
+        ib.cancelOrder(order_id, "")
+        
+        time.sleep(1)
+        
+        logger.info(f"Order {order_id} cancellation requested")
+        
+        return {
+            "order_id": order_id,
+            "status": "cancellation_requested"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cancelling order: {e}")
+        raise Exception(f"Failed to cancel order: {str(e)}")
+
+# Order endpoints
+class PlaceOrderRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=10)
+    action: str = Field(..., pattern=r'^(BUY|SELL)$')
+    quantity: float = Field(..., gt=0)
+    order_type: str = Field(default="MKT", pattern=r'^(MKT|LMT|STP|STP LMT)$')
+    limit_price: Optional[float] = Field(None, gt=0)
+    stop_price: Optional[float] = Field(None, gt=0)
+
+class CancelOrderRequest(BaseModel):
+    order_id: int = Field(..., gt=0)
+
+@app.post("/orders/place")
+async def place_order(request: PlaceOrderRequest):
+    """Place order through IB Gateway"""
+    try:
+        logger.info(f"Order placement endpoint called: {request.symbol} {request.action} {request.quantity}")
+        
+        # Validate order parameters
+        if request.order_type in ["LMT", "STP LMT"] and not request.limit_price:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="limit_price required for LIMIT and STOP_LIMIT orders"
+            )
+        
+        if request.order_type in ["STP", "STP LMT"] and not request.stop_price:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="stop_price required for STOP and STOP_LIMIT orders"
+            )
+        
+        # Use lambda to pass all arguments
+        result = await run_tws_operation(
+            lambda: place_order_sync(
+                request.symbol,
+                request.action,
+                request.quantity,
+                request.order_type,
+                request.limit_price,
+                request.stop_price
+            )
+        )
+        
+        logger.info(f"Order {result['order_id']} placed successfully")
+        return result
+        
+    except HTTPException as he:
+        logger.error(f"HTTP Exception in order placement: {he.detail}")
+        raise he
+    except Exception as e:
+        error_str = str(e)
+        logger.error(f"Error in order placement endpoint: {error_str}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to place order: {error_str}"
+        )
+
+@app.post("/orders/cancel")
+async def cancel_order(request: CancelOrderRequest):
+    """Cancel order through IB Gateway"""
+    try:
+        logger.info(f"Order cancellation endpoint called: order_id={request.order_id}")
+        
+        result = await run_tws_operation(lambda: cancel_order_sync(request.order_id))
+        
+        logger.info(f"Order {request.order_id} cancellation requested")
+        return result
+        
+    except HTTPException as he:
+        logger.error(f"HTTP Exception in order cancellation: {he.detail}")
+        raise he
+    except Exception as e:
+        error_str = str(e)
+        logger.error(f"Error in order cancellation endpoint: {error_str}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel order: {error_str}"
+        )
+
 if __name__ == "__main__":
     logger.info("Starting TWS API Service...")
     uvicorn.run(
