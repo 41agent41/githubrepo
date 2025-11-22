@@ -12,7 +12,7 @@ router.post('/calculate', async (req: Request, res: Response) => {
     if (!setup_id && (!symbol || !timeframe || !strategies)) {
       return res.status(400).json({
         error: 'Missing required parameters',
-        required: ['setup_id'] + (!setup_id ? ['symbol', 'timeframe', 'strategies'] : []),
+        required: ['setup_id', ...(!setup_id ? ['symbol', 'timeframe', 'strategies'] : [])],
         received: req.body
       });
     }
