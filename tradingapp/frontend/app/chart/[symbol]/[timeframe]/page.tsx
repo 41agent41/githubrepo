@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { createChart, ColorType, IChartApi, ISeriesApi, Time, SeriesMarker, CandlestickData, HistogramData } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, Time, SeriesMarker, HistogramData } from 'lightweight-charts';
 import { io, Socket } from 'socket.io-client';
 import OrderDialog from '../../../components/OrderDialog';
 import OrderHistory from '../../../components/OrderHistory';
