@@ -24,7 +24,7 @@ interface TradingSetup {
   chart_urls: string[];
 }
 
-export default function TradingSetupPage() {
+export default function TradingSetupPage(): JSX.Element {
   const [selectedContract, setSelectedContract] = useState<ContractResult | null>(null);
   const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>(['1hour']);
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
