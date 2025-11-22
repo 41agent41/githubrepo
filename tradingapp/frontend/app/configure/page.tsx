@@ -339,15 +339,16 @@ export default function TradingSetupPage(): JSX.Element {
                   <p className="text-sm text-gray-600">Port allocation and chart spawning</p>
                 </div>
               </div>
-            <PortAllocator
-              port={setup?.port || null}
-              symbol={selectedContract?.symbol || null}
-              timeframes={selectedTimeframes}
-              indicators={selectedIndicators}
-              strategies={selectedStrategies}
-              setupId={setup?.id || null}
-              onOpenCharts={handleOpenCharts}
-            />
+              <PortAllocator
+                port={setup?.port || null}
+                symbol={selectedContract?.symbol || null}
+                timeframes={selectedTimeframes}
+                indicators={selectedIndicators}
+                strategies={selectedStrategies}
+                setupId={setup?.id || null}
+                onOpenCharts={handleOpenCharts}
+              />
+            </div>
           </div>
 
           {/* Error Display */}
