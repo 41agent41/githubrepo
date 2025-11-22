@@ -385,7 +385,11 @@ export default function StandaloneChartPage() {
           queryUrl += `&indicators=${indicators.join(',')}`;
         }
 
-        const response = await fetch(queryUrl);
+        const response = await fetch(queryUrl, {
+          headers: {
+            'X-Data-Query-Enabled': 'true'
+          }
+        });
 
         if (!response.ok) {
           throw new Error(`Failed to fetch data: ${response.statusText}`);
