@@ -481,9 +481,33 @@ export default function StandaloneChartPage() {
               ? (signal.timestamp as Time)
               : signal.timestamp);
 
-        const tooltipText = signal.confidence 
-          ? `${signal.strategy || signal.strategy_name || 'Strategy'}: ${signal.signal_type} @ $${signal.price.toFixed(2)}\nConfidence: ${(signal.confidence * 100).toFixed(1)}%`
-          : `${signal.strategy || signal.strategy_name || 'Strategy'}: ${signal.signal_type} @ $${signal.price.toFixed(2)}`;
+        // Build tooltip text with indicator values if available
+        let tooltipText = `${signal.strategy || signal.strategy_name || 'Strategy'}: ${signal.signal_type}\nPrice: $${signal.price.toFixed(2)}`;
+        
+        if (signal.confidence) {
+          tooltipText += `\nConfidence: ${(signal.confidence * 100).toFixed(1)}%`;
+        }
+        
+        // Add indicator values if available
+        if (signal.indicator_values && typeof signal.indicator_values === 'object') {
+          const indicatorValues = signal.indicator_values as Record<string, any>;
+          const indicatorKeys = Object.keys(indicatorValues).filter(key => 
+            indicatorValues[key] !== null && indicatorValues[key] !== undefined
+          );
+          
+          if (indicatorKeys.length > 0) {
+            tooltipText += '\n\nIndicators:';
+            indicatorKeys.slice(0, 5).forEach(key => {
+              const value = indicatorValues[key];
+              if (typeof value === 'number') {
+                tooltipText += `\n${key.toUpperCase().replace(/_/g, ' ')}: ${value.toFixed(2)}`;
+              }
+            });
+            if (indicatorKeys.length > 5) {
+              tooltipText += `\n... and ${indicatorKeys.length - 5} more`;
+            }
+          }
+        }
 
         return {
           time: signalTime,

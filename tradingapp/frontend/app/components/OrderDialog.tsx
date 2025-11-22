@@ -121,15 +121,39 @@ export default function OrderDialog({
           <h2 className="text-xl font-bold text-gray-900 mb-4">Place Order</h2>
 
           {signal && (
-            <div className={`p-4 rounded-lg mb-4 ${
-              signal.signal_type === 'BUY' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+            <div className={`p-4 rounded-lg mb-4 border-2 ${
+              signal.signal_type === 'BUY' ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
             }`}>
-              <div className="font-medium text-gray-900">
-                {signal.signal_type} Signal: {signal.strategy}
-              </div>
-              <div className="text-sm text-gray-600 mt-1">
-                Symbol: {symbol} | Price: ${signal.price.toFixed(2)}
-                {signal.confidence && ` | Confidence: ${(signal.confidence * 100).toFixed(1)}%`}
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className={`text-2xl ${signal.signal_type === 'BUY' ? 'text-green-600' : 'text-red-600'}`}>
+                      {signal.signal_type === 'BUY' ? '📈' : '📉'}
+                    </span>
+                    <div>
+                      <div className="font-semibold text-gray-900">
+                        {signal.signal_type} Signal: {signal.strategy}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        Symbol: <span className="font-medium">{symbol}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-200">
+                    <div>
+                      <div className="text-xs text-gray-500">Signal Price</div>
+                      <div className="text-lg font-bold text-gray-900">${signal.price.toFixed(2)}</div>
+                    </div>
+                    {signal.confidence && (
+                      <div>
+                        <div className="text-xs text-gray-500">Confidence</div>
+                        <div className="text-lg font-bold text-gray-900">
+                          {(signal.confidence * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -170,16 +194,33 @@ export default function OrderDialog({
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Limit Price ($)
                 </label>
-                <input
-                  type="number"
-                  value={limitPrice}
-                  onChange={(e) => setLimitPrice(e.target.value)}
-                  min="0.01"
-                  step="0.01"
-                  placeholder={signal ? signal.price.toFixed(2) : '0.00'}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={isSubmitting}
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={limitPrice}
+                    onChange={(e) => setLimitPrice(e.target.value)}
+                    min="0.01"
+                    step="0.01"
+                    placeholder={signal ? signal.price.toFixed(2) : '0.00'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={isSubmitting}
+                  />
+                  {signal && (
+                    <button
+                      type="button"
+                      onClick={() => setLimitPrice(signal.price.toFixed(2))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      disabled={isSubmitting}
+                    >
+                      Use Signal Price
+                    </button>
+                  )}
+                </div>
+                {signal && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Current signal price: ${signal.price.toFixed(2)}
+                  </p>
+                )}
               </div>
             )}
 

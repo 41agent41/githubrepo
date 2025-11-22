@@ -106,6 +106,23 @@ export default function TradingSetupPage() {
 
   const canCreateSetup = selectedContract && selectedTimeframes.length > 0;
 
+  // Calculate progress
+  const getStepStatus = (step: number) => {
+    if (setup) return 'complete';
+    if (step === 1) return selectedContract ? 'complete' : 'current';
+    if (step === 2) return selectedTimeframes.length > 0 ? 'complete' : (selectedContract ? 'current' : 'pending');
+    if (step === 3) return 'current'; // Indicators/Strategies - always current if previous steps done
+    if (step === 4) return (selectedContract && selectedTimeframes.length > 0) ? 'current' : 'pending';
+    return 'pending';
+  };
+
+  const steps = [
+    { number: 1, title: 'Select Symbol', description: 'Choose the market symbol to trade', status: getStepStatus(1) },
+    { number: 2, title: 'Select Timeframes', description: 'Choose one or more timeframes', status: getStepStatus(2) },
+    { number: 3, title: 'Indicators & Strategies', description: 'Choose technical indicators and strategies', status: getStepStatus(3) },
+    { number: 4, title: 'Chart Configuration', description: 'Port allocation and chart spawning', status: getStepStatus(4) },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -123,12 +140,73 @@ export default function TradingSetupPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Progress Indicator */}
+        {!setup && (
+          <div className="mb-8 bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              {steps.map((step, index) => (
+                <React.Fragment key={step.number}>
+                  <div className="flex flex-col items-center flex-1">
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 font-medium text-sm transition-all ${
+                      step.status === 'complete'
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : step.status === 'current'
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'bg-white border-gray-300 text-gray-400'
+                    }`}>
+                      {step.status === 'complete' ? '✓' : step.number}
+                    </div>
+                    <div className="mt-2 text-center">
+                      <div className={`text-xs font-medium ${
+                        step.status === 'complete' ? 'text-green-600' : step.status === 'current' ? 'text-blue-600' : 'text-gray-400'
+                      }`}>
+                        Step {step.number}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 max-w-[120px]">
+                        {step.title}
+                      </div>
+                    </div>
+                  </div>
+                  {index < steps.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-2 ${
+                      step.status === 'complete' ? 'bg-green-500' : 'bg-gray-300'
+                    }`} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-6">
           {/* Step 1: Symbol Selection */}
-          <div>
-            <div className="mb-2">
-              <h2 className="text-lg font-medium text-gray-900">Step 1: Select Symbol</h2>
-              <p className="text-sm text-gray-600">Choose the market symbol to trade</p>
+          <div className={`bg-white rounded-lg shadow-sm border p-6 transition-all ${
+            getStepStatus(1) === 'current' ? 'ring-2 ring-blue-500' : ''
+          }`}>
+            <div className="mb-4">
+              <div className="flex items-center space-x-3 mb-2">
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 font-medium text-sm ${
+                  selectedContract
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : 'bg-blue-500 border-blue-500 text-white'
+                }`}>
+                  {selectedContract ? '✓' : '1'}
+                </div>
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Step 1: Select Symbol</h2>
+                  <p className="text-sm text-gray-600">Choose the market symbol to trade</p>
+                </div>
+              </div>
+              {selectedContract && (
+                <div className="ml-11 mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-900">
+                    ✓ Selected: {selectedContract.symbol}
+                  </div>
+                  {selectedContract.companyName && (
+                    <div className="text-xs text-green-700 mt-1">{selectedContract.companyName}</div>
+                  )}
+                </div>
+              )}
             </div>
             <SymbolSelector
               selectedContract={selectedContract}
@@ -138,10 +216,30 @@ export default function TradingSetupPage() {
           </div>
 
           {/* Step 2: Timeframe Selection */}
-          <div>
-            <div className="mb-2">
-              <h2 className="text-lg font-medium text-gray-900">Step 2: Select Timeframes</h2>
-              <p className="text-sm text-gray-600">Choose one or more timeframes for analysis</p>
+          <div className={`bg-white rounded-lg shadow-sm border p-6 transition-all ${
+            getStepStatus(2) === 'current' ? 'ring-2 ring-blue-500' : ''
+          }`}>
+            <div className="mb-4">
+              <div className="flex items-center space-x-3 mb-2">
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 font-medium text-sm ${
+                  selectedTimeframes.length > 0
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : (selectedContract ? 'bg-blue-500 border-blue-500 text-white' : 'bg-gray-300 border-gray-300 text-gray-500')
+                }`}>
+                  {selectedTimeframes.length > 0 ? '✓' : '2'}
+                </div>
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Step 2: Select Timeframes</h2>
+                  <p className="text-sm text-gray-600">Choose one or more timeframes for analysis</p>
+                </div>
+              </div>
+              {selectedTimeframes.length > 0 && (
+                <div className="ml-11 mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-900">
+                    ✓ {selectedTimeframes.length} timeframe{selectedTimeframes.length !== 1 ? 's' : ''} selected: {selectedTimeframes.join(', ')}
+                  </div>
+                </div>
+              )}
             </div>
             <MultiTimeframeSelector
               selectedTimeframes={selectedTimeframes}
@@ -151,10 +249,32 @@ export default function TradingSetupPage() {
           </div>
 
           {/* Step 3: Indicators/Strategies Selection */}
-          <div>
-            <div className="mb-2">
-              <h2 className="text-lg font-medium text-gray-900">Step 3: Select Indicators & Strategies</h2>
-              <p className="text-sm text-gray-600">Choose technical indicators and trading strategies</p>
+          <div className={`bg-white rounded-lg shadow-sm border p-6 transition-all ${
+            getStepStatus(3) === 'current' ? 'ring-2 ring-blue-500' : ''
+          }`}>
+            <div className="mb-4">
+              <div className="flex items-center space-x-3 mb-2">
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 font-medium text-sm ${
+                  (selectedIndicators.length > 0 || selectedStrategies.length > 0)
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : (selectedContract && selectedTimeframes.length > 0 ? 'bg-blue-500 border-blue-500 text-white' : 'bg-gray-300 border-gray-300 text-gray-500')
+                }`}>
+                  {(selectedIndicators.length > 0 || selectedStrategies.length > 0) ? '✓' : '3'}
+                </div>
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Step 3: Select Indicators & Strategies</h2>
+                  <p className="text-sm text-gray-600">Choose technical indicators and trading strategies (optional)</p>
+                </div>
+              </div>
+              {(selectedIndicators.length > 0 || selectedStrategies.length > 0) && (
+                <div className="ml-11 mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-900">
+                    {selectedIndicators.length > 0 && `✓ ${selectedIndicators.length} indicator${selectedIndicators.length !== 1 ? 's' : ''} selected`}
+                    {selectedIndicators.length > 0 && selectedStrategies.length > 0 && ' • '}
+                    {selectedStrategies.length > 0 && `✓ ${selectedStrategies.length} strateg${selectedStrategies.length !== 1 ? 'ies' : 'y'} selected`}
+                  </div>
+                </div>
+              )}
             </div>
             
             {/* Tabs */}
@@ -202,11 +322,23 @@ export default function TradingSetupPage() {
           </div>
 
           {/* Step 4: Chart Configuration */}
-          <div>
-            <div className="mb-2">
-              <h2 className="text-lg font-medium text-gray-900">Step 4: Chart Configuration</h2>
-              <p className="text-sm text-gray-600">Port allocation and chart spawning</p>
-            </div>
+          <div className={`bg-white rounded-lg shadow-sm border p-6 transition-all ${
+            getStepStatus(4) === 'current' ? 'ring-2 ring-blue-500' : ''
+          }`}>
+            <div className="mb-4">
+              <div className="flex items-center space-x-3 mb-2">
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 font-medium text-sm ${
+                  setup
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : (selectedContract && selectedTimeframes.length > 0 ? 'bg-blue-500 border-blue-500 text-white' : 'bg-gray-300 border-gray-300 text-gray-500')
+                }`}>
+                  {setup ? '✓' : '4'}
+                </div>
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Step 4: Chart Configuration</h2>
+                  <p className="text-sm text-gray-600">Port allocation and chart spawning</p>
+                </div>
+              </div>
             <PortAllocator
               port={setup?.port || null}
               symbol={selectedContract?.symbol || null}
