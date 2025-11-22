@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, Time, SeriesMarker, CandlestickData, HistogramData } from 'lightweight-charts';
 import { io, Socket } from 'socket.io-client';
+import OrderDialog from '../../../components/OrderDialog';
+import OrderHistory from '../../../components/OrderHistory';
+import BackToHome from '../../../components/BackToHome';
 
 interface CandlestickData {
   time: Time;
@@ -15,11 +18,16 @@ interface CandlestickData {
 }
 
 interface StrategySignal {
-  timestamp: string;
-  strategy: string;
-  signal_type: 'BUY' | 'SELL';
+  id?: number;
+  setup_id?: number;
+  timeframe?: string;
+  timestamp: string | number | Time;
+  strategy?: string;
+  strategy_name?: string;
+  signal_type: 'BUY' | 'SELL' | 'HOLD';
   price: number;
   confidence?: number;
+  indicator_values?: Record<string, any>;
 }
 
 export default function StandaloneChartPage() {
@@ -44,6 +52,9 @@ export default function StandaloneChartPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [selectedSignal, setSelectedSignal] = useState<StrategySignal | null>(null);
+  const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false);
+  const [contractId, setContractId] = useState<number | undefined>(undefined);
 
   // Initialize chart
   useEffect(() => {
@@ -165,7 +176,7 @@ export default function StandaloneChartPage() {
         }
 
         if (volumeSeries.current) {
-          const volumeData = formattedData
+          const volumeData: HistogramData[] = formattedData
             .filter(d => d.volume !== undefined)
             .map(d => ({
               time: d.time,
@@ -173,6 +184,11 @@ export default function StandaloneChartPage() {
               color: d.close >= d.open ? '#26a69a80' : '#ef535080',
             }));
           volumeSeries.current.setData(volumeData);
+        }
+
+        // Fetch existing strategy signals for this setup
+        if (setupId) {
+          fetchStrategySignals();
         }
 
         if (chart.current) {
@@ -189,15 +205,63 @@ export default function StandaloneChartPage() {
     fetchData();
   }, [symbol, timeframe, indicators]);
 
+  // Fetch strategy signals
+  const fetchStrategySignals = useCallback(async () => {
+    if (!setupId) return;
+
+    try {
+      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+      if (!backendUrl) return;
+
+      const response = await fetch(
+        `${backendUrl}/api/strategies/signals/${setupId}?timeframe=${timeframe}&limit=100`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const fetchedSignals = (data.signals || []).filter((s: StrategySignal) => s.signal_type !== 'HOLD');
+        setSignals(fetchedSignals);
+        updateChartMarkers(fetchedSignals);
+      }
+    } catch (err) {
+      console.error('Error fetching strategy signals:', err);
+    }
+  }, [setupId, timeframe]);
+
+  // Update chart markers from signals
+  const updateChartMarkers = useCallback((signalList: StrategySignal[]) => {
+    if (!candlestickSeries.current) return;
+
+    const markers: SeriesMarker<Time>[] = signalList
+      .filter(s => s.signal_type !== 'HOLD')
+      .map((signal) => {
+        const signalTime = typeof signal.timestamp === 'string' 
+          ? (Math.floor(new Date(signal.timestamp).getTime() / 1000) as Time)
+          : (typeof signal.timestamp === 'number' 
+              ? (signal.timestamp as Time)
+              : signal.timestamp);
+
+        return {
+          time: signalTime,
+          position: signal.signal_type === 'BUY' ? 'belowBar' : 'aboveBar',
+          color: signal.signal_type === 'BUY' ? '#4CAF50' : '#F44336',
+          shape: signal.signal_type === 'BUY' ? 'arrowUp' : 'arrowDown',
+          text: `${signal.strategy || signal.strategy_name || 'Strategy'}: ${signal.signal_type} @ $${signal.price.toFixed(2)}`,
+          size: 1,
+        };
+      });
+
+    candlestickSeries.current.setMarkers(markers);
+  }, []);
+
   // Setup WebSocket connection
   useEffect(() => {
     if (!setupId) return;
 
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL;
+    const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
     if (!backendUrl) return;
 
-    const socketUrl = backendUrl.replace('http://', 'ws://').replace('https://', 'wss://');
-    const socket = io(socketUrl, {
+    const socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
     });
 
@@ -205,7 +269,8 @@ export default function StandaloneChartPage() {
 
     socket.on('connect', () => {
       setConnectionStatus('connected');
-      socket.emit('subscribe-setup', { setup_id: setupId });
+      socket.emit('subscribe-setup', { setup_id: parseInt(setupId) });
+      socket.emit('subscribe-market-data', { symbol, timeframe, port });
     });
 
     socket.on('disconnect', () => {
@@ -213,28 +278,85 @@ export default function StandaloneChartPage() {
     });
 
     socket.on('strategy-signal', (data: StrategySignal) => {
-      setSignals(prev => [...prev, data]);
-      // Add signal marker to chart (simplified - would need proper marker implementation)
+      // Only add signals for current timeframe
+      if (data.timeframe === timeframe && data.signal_type !== 'HOLD') {
+        setSignals(prev => {
+          const newSignals = [...prev, data];
+          updateChartMarkers(newSignals);
+          return newSignals;
+        });
+      }
     });
 
     socket.on('market-data-update', (data: any) => {
       if (candlestickSeries.current && data.symbol === symbol && data.timeframe === timeframe) {
         const newBar: CandlestickData = {
-          time: data.timestamp as Time,
+          time: (typeof data.time === 'string' 
+            ? Math.floor(new Date(data.time).getTime() / 1000)
+            : data.time || data.timestamp) as Time,
           open: data.open,
           high: data.high,
           low: data.low,
           close: data.close,
-          volume: data.volume,
         };
         candlestickSeries.current.update(newBar);
+
+        if (volumeSeries.current && data.volume !== undefined) {
+          const volumeBar: HistogramData = {
+            time: newBar.time,
+            value: data.volume,
+            color: data.close >= data.open ? '#26a69a80' : '#ef535080',
+          };
+          volumeSeries.current.update(volumeBar);
+        }
       }
+    });
+
+    socket.on('order-status', (orderData: any) => {
+      console.log('Order status update:', orderData);
+      // Optionally refresh order history
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [setupId, symbol, timeframe]);
+  }, [setupId, symbol, timeframe, port, updateChartMarkers]);
+
+  // Update markers when signals change
+  useEffect(() => {
+    if (signals.length > 0 && candlestickSeries.current) {
+      updateChartMarkers(signals);
+    }
+  }, [signals, updateChartMarkers]);
+
+  // Get contract ID for order placement
+  useEffect(() => {
+    const fetchContractId = async () => {
+      try {
+        const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+        if (!backendUrl || !setupId) return;
+
+        const response = await fetch(`${backendUrl}/api/trading-setup/${setupId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.contract_id) {
+            setContractId(data.contract_id);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching contract ID:', err);
+      }
+    };
+
+    if (setupId) {
+      fetchContractId();
+    }
+  }, [setupId]);
+
+  const handleSignalClick = (signal: StrategySignal) => {
+    setSelectedSignal(signal);
+    setIsOrderDialogOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -242,30 +364,35 @@ export default function StandaloneChartPage() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
-                {symbol} - {timeframe}
-              </h1>
-              <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
-                {port && <span>Port: {port}</span>}
-                {setupId && <span>Setup ID: {setupId}</span>}
+            <div className="flex-1">
+              <div className="flex items-center space-x-4">
+                <h1 className="text-xl font-bold text-gray-900">
+                  {symbol} - {timeframe}
+                </h1>
+                {port && (
+                  <span className="text-sm text-gray-600">Port: {port}</span>
+                )}
+                {setupId && (
+                  <span className="text-sm text-gray-600">Setup ID: {setupId}</span>
+                )}
                 <div className="flex items-center space-x-2">
                   <div className={`w-2 h-2 rounded-full ${
                     connectionStatus === 'connected' ? 'bg-green-500' :
                     connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                   }`}></div>
-                  <span className="capitalize">{connectionStatus}</span>
+                  <span className="text-sm text-gray-600 capitalize">{connectionStatus}</span>
                 </div>
               </div>
+              <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
+                {indicators.length > 0 && (
+                  <span>Indicators: {indicators.join(', ')}</span>
+                )}
+                {strategies.length > 0 && (
+                  <span>Strategies: {strategies.join(', ')}</span>
+                )}
+              </div>
             </div>
-            <div className="text-sm text-gray-600">
-              {indicators.length > 0 && (
-                <div>Indicators: {indicators.join(', ')}</div>
-              )}
-              {strategies.length > 0 && (
-                <div>Strategies: {strategies.join(', ')}</div>
-              )}
-            </div>
+            <BackToHome />
           </div>
         </div>
       </header>
@@ -296,35 +423,80 @@ export default function StandaloneChartPage() {
           <div className="mt-6 bg-white rounded-lg shadow-sm border p-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Signals</h3>
             <div className="space-y-2">
-              {signals.slice(-10).reverse().map((signal, idx) => (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-md border ${
-                    signal.signal_type === 'BUY'
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-red-50 border-red-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">
-                        {signal.signal_type} - {signal.strategy}
+              {signals.slice(-10).reverse().map((signal, idx) => {
+                const signalTime = typeof signal.timestamp === 'string' 
+                  ? new Date(signal.timestamp)
+                  : typeof signal.timestamp === 'number'
+                    ? new Date(signal.timestamp * 1000)
+                    : new Date();
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => handleSignalClick(signal)}
+                    className={`p-3 rounded-md border cursor-pointer hover:shadow-md transition-shadow ${
+                      signal.signal_type === 'BUY'
+                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                        : 'bg-red-50 border-red-200 hover:bg-red-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium">
+                          {signal.signal_type} - {signal.strategy || signal.strategy_name || 'Strategy'}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Price: ${signal.price.toFixed(2)}
+                          {signal.confidence && ` | Confidence: ${(signal.confidence * 100).toFixed(1)}%`}
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-600">
-                        Price: ${signal.price.toFixed(2)}
-                        {signal.confidence && ` | Confidence: ${(signal.confidence * 100).toFixed(1)}%`}
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">
+                          {signalTime.toLocaleString()}
+                        </div>
+                        <button className="mt-2 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                          Place Order
+                        </button>
                       </div>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(signal.timestamp).toLocaleString()}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
+
+        {/* Order History */}
+        {setupId && (
+          <div className="mt-6">
+            <OrderHistory setupId={parseInt(setupId)} limit={10} autoRefresh={true} />
+          </div>
+        )}
       </main>
+
+      {/* Order Dialog */}
+      <OrderDialog
+        isOpen={isOrderDialogOpen}
+        onClose={() => {
+          setIsOrderDialogOpen(false);
+          setSelectedSignal(null);
+        }}
+        signal={selectedSignal ? {
+          signal_type: selectedSignal.signal_type,
+          strategy: selectedSignal.strategy || selectedSignal.strategy_name || 'Strategy',
+          price: selectedSignal.price,
+          confidence: selectedSignal.confidence,
+          timestamp: typeof selectedSignal.timestamp === 'string' 
+            ? selectedSignal.timestamp
+            : typeof selectedSignal.timestamp === 'number'
+              ? new Date(selectedSignal.timestamp * 1000).toISOString()
+              : new Date().toISOString()
+        } : undefined}
+        symbol={symbol}
+        contractId={contractId}
+        setupId={setupId ? parseInt(setupId) : undefined}
+        signalId={selectedSignal?.id}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { tradingSetupService } from '../services/tradingSetupService.js';
+import { marketDataCollector } from '../services/marketDataCollector.js';
+import { strategyService } from '../services/strategyService.js';
 
 const router = express.Router();
 
@@ -52,6 +54,18 @@ router.post('/create', async (req: Request, res: Response) => {
       currency: currency || 'USD'
     });
 
+    // Trigger initial data collection (async, don't wait)
+    marketDataCollector.collectForSetup(setup.id).catch((err) => {
+      console.error(`Error in initial data collection for setup ${setup.id}:`, err);
+    });
+
+    // Trigger initial strategy calculation if strategies are selected (async, don't wait)
+    if (setup.strategies && setup.strategies.length > 0) {
+      strategyService.calculateSignalsForSetup(setup.id).catch((err) => {
+        console.error(`Error in initial strategy calculation for setup ${setup.id}:`, err);
+      });
+    }
+
     // Generate chart URLs
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const indicatorsParam = setup.indicators.length > 0 ? `&indicators=${setup.indicators.join(',')}` : '';
@@ -71,7 +85,8 @@ router.post('/create', async (req: Request, res: Response) => {
       indicators: setup.indicators,
       strategies: setup.strategies,
       status: setup.status,
-      created_at: setup.createdAt
+      created_at: setup.createdAt,
+      message: 'Trading setup created successfully. Initial data collection and strategy calculation started.'
     });
 
   } catch (error: any) {
@@ -107,7 +122,18 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    res.json(setup);
+    res.json({
+      id: setup.id,
+      symbol: setup.symbol,
+      contract_id: setup.contractId,
+      timeframes: setup.timeframes,
+      indicators: setup.indicators,
+      strategies: setup.strategies,
+      port: setup.port,
+      status: setup.status,
+      created_at: setup.createdAt,
+      updated_at: setup.updatedAt
+    });
 
   } catch (error: any) {
     console.error('Error getting trading setup:', error);
