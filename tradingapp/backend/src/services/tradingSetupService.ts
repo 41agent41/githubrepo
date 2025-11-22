@@ -25,14 +25,20 @@ interface TradingSetup {
   updatedAt: Date;
 }
 
-// Port pool management (in-memory for now)
+// Port pool management
 const PORT_POOL_START = 3001;
 const PORT_POOL_END = 3100;
 const allocatedPorts = new Set<number>();
 
-function allocatePort(): number {
+async function allocatePort(): Promise<number> {
+  // Get all ports currently in use from database
+  const query = 'SELECT port FROM trading_setups WHERE port IS NOT NULL';
+  const result = await dbService.query(query);
+  const usedPorts = new Set(result.rows.map(row => row.port));
+  
+  // Find first available port
   for (let port = PORT_POOL_START; port <= PORT_POOL_END; port++) {
-    if (!allocatedPorts.has(port)) {
+    if (!usedPorts.has(port) && !allocatedPorts.has(port)) {
       allocatedPorts.add(port);
       return port;
     }
@@ -57,7 +63,7 @@ export const tradingSetupService = {
       });
 
       // Allocate port
-      const port = allocatePort();
+      const port = await allocatePort();
 
       // Create trading setup record
       const query = `
