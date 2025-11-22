@@ -62,6 +62,7 @@ export default function SymbolSelector({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-data-query-enabled': 'true',
         },
         body: JSON.stringify({
           symbol: symbol.trim().toUpperCase(),

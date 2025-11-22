@@ -223,6 +223,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true',
         },
         body: JSON.stringify({
           pattern: searchTerm,
@@ -248,6 +249,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Data-Query-Enabled': 'true',
             },
             body: JSON.stringify({
               symbol: searchTerm,

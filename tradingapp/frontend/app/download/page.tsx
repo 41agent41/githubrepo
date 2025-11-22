@@ -924,7 +924,8 @@ export default function DownloadPage() {
       const response = await fetch(`${apiUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1M&account_mode=${accountMode}`, {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true'
         }
       });
 
@@ -988,7 +989,8 @@ export default function DownloadPage() {
       const response = await fetch(`${apiUrl}/api/market-data/validate`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true'
         },
         body: JSON.stringify({
           symbols: symbolsArray,
