@@ -11,7 +11,7 @@ CREATE INDEX IF NOT EXISTS idx_setups_created_at ON trading_setups(created_at DE
 -- Active trading setups view (replace existing simple view with enhanced version)
 -- NOTE: This view explicitly lists columns instead of using ts.* to avoid duplicate column errors
 -- since both trading_setups and contracts tables have a 'symbol' column
-DROP VIEW IF EXISTS active_trading_setups;
+DROP VIEW IF EXISTS active_trading_setups CASCADE;
 CREATE VIEW active_trading_setups AS
 SELECT 
     ts.id,
@@ -24,13 +24,13 @@ SELECT
     ts.status,
     ts.created_at,
     ts.updated_at,
-    c.sec_type,
-    c.exchange,
-    c.currency,
-    COUNT(DISTINCT ss.id) as signal_count,
+    COALESCE(c.sec_type, 'STK') as sec_type,
+    COALESCE(c.exchange, 'SMART') as exchange,
+    COALESCE(c.currency, 'USD') as currency,
+    COALESCE(COUNT(DISTINCT ss.id), 0) as signal_count,
     MAX(ss.timestamp) as last_signal_time,
-    COUNT(DISTINCT oe.id) FILTER (WHERE oe.status IN ('pending', 'submitted', 'partial')) as active_orders_count,
-    COUNT(DISTINCT oe.id) FILTER (WHERE oe.status = 'filled') as filled_orders_count
+    COALESCE(COUNT(DISTINCT oe.id) FILTER (WHERE oe.status IN ('pending', 'submitted', 'partial')), 0) as active_orders_count,
+    COALESCE(COUNT(DISTINCT oe.id) FILTER (WHERE oe.status = 'filled'), 0) as filled_orders_count
 FROM trading_setups ts
 LEFT JOIN contracts c ON ts.contract_id = c.id
 LEFT JOIN strategy_signals ss ON ts.id = ss.setup_id
