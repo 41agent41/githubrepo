@@ -124,7 +124,8 @@ export default function TradingSetupPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <React.Fragment>
+      <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -409,6 +410,7 @@ export default function TradingSetupPage() {
         </div>
       </main>
     </div>
+    </React.Fragment>
   );
 }
 
