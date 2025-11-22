@@ -24,13 +24,13 @@ SELECT
     ts.status,
     ts.created_at,
     ts.updated_at,
-    COALESCE(c.sec_type, 'STK') as sec_type,
-    COALESCE(c.exchange, 'SMART') as exchange,
-    COALESCE(c.currency, 'USD') as currency,
-    COALESCE(COUNT(DISTINCT ss.id), 0) as signal_count,
+    c.sec_type,
+    c.exchange,
+    c.currency,
+    COUNT(DISTINCT ss.id) as signal_count,
     MAX(ss.timestamp) as last_signal_time,
-    COALESCE(COUNT(DISTINCT oe.id) FILTER (WHERE oe.status IN ('pending', 'submitted', 'partial')), 0) as active_orders_count,
-    COALESCE(COUNT(DISTINCT oe.id) FILTER (WHERE oe.status = 'filled'), 0) as filled_orders_count
+    COUNT(DISTINCT oe.id) FILTER (WHERE oe.status IN ('pending', 'submitted', 'partial')) as active_orders_count,
+    COUNT(DISTINCT oe.id) FILTER (WHERE oe.status = 'filled') as filled_orders_count
 FROM trading_setups ts
 LEFT JOIN contracts c ON ts.contract_id = c.id
 LEFT JOIN strategy_signals ss ON ts.id = ss.setup_id
