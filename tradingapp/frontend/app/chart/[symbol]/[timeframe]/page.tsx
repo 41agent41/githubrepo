@@ -800,8 +800,8 @@ export default function StandaloneChartPage() {
           setIsOrderDialogOpen(false);
           setSelectedSignal(null);
         }}
-        signal={selectedSignal ? {
-          signal_type: selectedSignal.signal_type,
+        signal={selectedSignal && (selectedSignal.signal_type === 'BUY' || selectedSignal.signal_type === 'SELL') ? {
+          signal_type: selectedSignal.signal_type as 'BUY' | 'SELL',
           strategy: selectedSignal.strategy || selectedSignal.strategy_name || 'Strategy',
           price: selectedSignal.price,
           confidence: selectedSignal.confidence,
