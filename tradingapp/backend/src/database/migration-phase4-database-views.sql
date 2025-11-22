@@ -9,6 +9,8 @@ CREATE INDEX IF NOT EXISTS idx_setups_contract_id ON trading_setups(contract_id)
 CREATE INDEX IF NOT EXISTS idx_setups_created_at ON trading_setups(created_at DESC);
 
 -- Active trading setups view (replace existing simple view with enhanced version)
+-- NOTE: This view explicitly lists columns instead of using ts.* to avoid duplicate column errors
+-- since both trading_setups and contracts tables have a 'symbol' column
 DROP VIEW IF EXISTS active_trading_setups;
 CREATE VIEW active_trading_setups AS
 SELECT 
@@ -20,7 +22,6 @@ SELECT
     ts.strategies,
     ts.port,
     ts.status,
-    ts.account_mode,
     ts.created_at,
     ts.updated_at,
     c.sec_type,
@@ -36,7 +37,7 @@ LEFT JOIN strategy_signals ss ON ts.id = ss.setup_id
 LEFT JOIN order_executions oe ON ts.id = oe.setup_id
 WHERE ts.status = 'active'
 GROUP BY ts.id, ts.symbol, ts.contract_id, ts.timeframes, ts.indicators, ts.strategies, 
-         ts.port, ts.status, ts.account_mode, ts.created_at, ts.updated_at,
+         ts.port, ts.status, ts.created_at, ts.updated_at,
          c.sec_type, c.exchange, c.currency;
 
 -- Enhanced recent signals view (already exists but ensure it's correct)
