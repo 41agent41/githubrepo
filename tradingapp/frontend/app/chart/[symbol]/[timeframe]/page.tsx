@@ -425,7 +425,7 @@ export default function StandaloneChartPage() {
             bb_middle: bar.bb_middle !== undefined && !isNaN(bar.bb_middle) ? Number(bar.bb_middle) : undefined,
             bb_lower: bar.bb_lower !== undefined && !isNaN(bar.bb_lower) ? Number(bar.bb_lower) : undefined,
           };
-        }).filter(bar => bar && !isNaN(bar.open) && !isNaN(bar.high) && !isNaN(bar.low) && !isNaN(bar.close));
+        }).filter((bar: CandlestickData) => bar && !isNaN(bar.open) && !isNaN(bar.high) && !isNaN(bar.low) && !isNaN(bar.close));
 
         setChartData(formattedData);
 
