@@ -92,30 +92,16 @@ const SECURITY_TYPES: SecurityType[] = [
 ];
 
 const EXCHANGES: Exchange[] = [
-  // US Exchanges
   { value: 'SMART', label: 'SMART (Best Execution)' },
   { value: 'NYSE', label: 'New York Stock Exchange' },
   { value: 'NASDAQ', label: 'NASDAQ' },
   { value: 'AMEX', label: 'American Stock Exchange' },
-  { value: 'ARCA', label: 'NYSE Arca' },
-  { value: 'BATS', label: 'BATS Exchange' },
-  { value: 'IEX', label: 'Investors Exchange' },
-  // Australian Exchanges
-  { value: 'ASX', label: 'Australian Stock Exchange' },
-  { value: 'CHIXAU', label: 'CBOE Australia' },
-  // Global Exchanges
-  { value: 'IDEALPRO', label: 'Forex (IDEALPRO)' },
-  { value: 'GLOBEX', label: 'CME Globex' },
-  { value: 'NYMEX', label: 'NYMEX - Energy & Metals' },
-  { value: 'COMEX', label: 'COMEX - Precious Metals' },
-  { value: 'CBOT', label: 'CBOT - Agricultural' },
-  { value: 'EUREX', label: 'Eurex - European Derivatives' },
+  { value: 'EUREX', label: 'Eurex' },
   { value: 'LSE', label: 'London Stock Exchange' },
   { value: 'TSE', label: 'Tokyo Stock Exchange' },
-  { value: 'HKEX', label: 'Hong Kong Stock Exchange' },
-  { value: 'SGX', label: 'Singapore Exchange' },
-  { value: 'CBOE', label: 'Chicago Board Options Exchange' },
-  { value: 'PAXOS', label: 'Paxos Crypto Exchange' }
+  { value: 'IDEALPRO', label: 'Forex (IDEALPRO)' },
+  { value: 'CME', label: 'Chicago Mercantile Exchange' },
+  { value: 'CBOE', label: 'Chicago Board Options Exchange' }
 ];
 
 const CURRENCIES: Currency[] = [
@@ -126,10 +112,7 @@ const CURRENCIES: Currency[] = [
   { value: 'CAD', label: 'Canadian Dollar' },
   { value: 'AUD', label: 'Australian Dollar' },
   { value: 'CHF', label: 'Swiss Franc' },
-  { value: 'NZD', label: 'New Zealand Dollar' },
-  { value: 'HKD', label: 'Hong Kong Dollar' },
-  { value: 'SGD', label: 'Singapore Dollar' },
-  { value: 'CNH', label: 'Offshore Chinese Yuan' }
+  { value: 'HKD', label: 'Hong Kong Dollar' }
 ];
 
 const TIMEFRAMES: Timeframe[] = [
