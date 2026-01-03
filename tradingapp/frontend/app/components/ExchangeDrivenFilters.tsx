@@ -23,18 +23,8 @@ const EXCHANGES = {
     { value: 'SNFE', label: 'SNFE (Sydney Futures Exchange)', description: 'Sydney Futures Exchange for futures and options' }
   ],
   GLOBAL: [
-    { value: 'SMART', label: 'SMART (Best Execution)', description: 'Global automated routing for best execution' },
-    { value: 'IDEALPRO', label: 'IDEALPRO (Forex)', description: 'IB Forex ECN for institutional FX trading' },
-    { value: 'GLOBEX', label: 'GLOBEX (CME)', description: 'CME Globex electronic trading platform' },
-    { value: 'NYMEX', label: 'NYMEX', description: 'New York Mercantile Exchange - Energy & Metals' },
-    { value: 'COMEX', label: 'COMEX', description: 'Commodity Exchange - Precious Metals' },
-    { value: 'CBOT', label: 'CBOT', description: 'Chicago Board of Trade - Agricultural Futures' },
-    { value: 'EUREX', label: 'EUREX', description: 'European Exchange - Derivatives' },
-    { value: 'LSE', label: 'LSE', description: 'London Stock Exchange' },
-    { value: 'TSE', label: 'TSE', description: 'Tokyo Stock Exchange' },
-    { value: 'HKEX', label: 'HKEX', description: 'Hong Kong Stock Exchange' },
-    { value: 'SGX', label: 'SGX', description: 'Singapore Exchange' },
-    { value: 'PAXOS', label: 'PAXOS', description: 'Paxos Crypto Exchange' }
+    { value: 'PAXOS', label: 'PAXOS (Cryptocurrency)', description: 'Paxos cryptocurrency exchange for digital assets' },
+    { value: 'IDEALPRO', label: 'IDEALPRO (Forex)', description: 'Interactive Brokers forex exchange for currency pairs' }
   ]
 };
 
@@ -58,14 +48,8 @@ const SECURITY_TYPES = {
     { value: 'WAR', label: 'Warrant', description: 'Warrants and structured products' }
   ],
   GLOBAL: [
-    { value: 'CASH', label: 'Forex', description: 'Foreign exchange currency pairs' },
-    { value: 'FUT', label: 'Future', description: 'Global futures contracts' },
-    { value: 'OPT', label: 'Option', description: 'Futures and index options' },
-    { value: 'CMDTY', label: 'Commodity', description: 'Commodity spot contracts' },
-    { value: 'IND', label: 'Index', description: 'Market indices' },
-    { value: 'CRYPTO', label: 'Cryptocurrency', description: 'Digital currencies' },
-    { value: 'CFD', label: 'CFD', description: 'Contracts for Difference' },
-    { value: 'STK', label: 'Stock', description: 'International stocks' }
+    { value: 'CRYPTO', label: 'Cryptocurrency', description: 'Digital currencies (Bitcoin, Ethereum, etc.)' },
+    { value: 'CASH', label: 'Forex', description: 'Foreign exchange currency pairs' }
   ]
 };
 
@@ -94,8 +78,7 @@ const CURRENCIES = {
     { value: 'CHF', label: 'CHF', description: 'Swiss Franc' },
     { value: 'NZD', label: 'NZD', description: 'New Zealand Dollar' },
     { value: 'HKD', label: 'HKD', description: 'Hong Kong Dollar' },
-    { value: 'SGD', label: 'SGD', description: 'Singapore Dollar' },
-    { value: 'CNH', label: 'CNH', description: 'Offshore Chinese Yuan' }
+    { value: 'SGD', label: 'SGD', description: 'Singapore Dollar' }
   ]
 };
 
@@ -126,48 +109,11 @@ const POPULAR_SYMBOLS: Record<string, Record<string, string[]>> = {
     'FUT': ['SPI', 'YT', 'IR', 'XT', 'TF', 'CF', 'WF', 'SF', 'MF', 'BF'],
     'OPT': ['SPIO', 'YTO', 'IRO', 'XTO', 'TFO', 'CFO', 'WFO', 'SFO', 'MFO', 'BFO']
   },
-  // Global exchanges
+  'PAXOS': {
+    'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'PAXG', 'USDC', 'USDP']
+  },
   'IDEALPRO': {
     'CASH': ['EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD', 'EUR.GBP', 'EUR.JPY', 'GBP.JPY']
-  },
-  'GLOBEX': {
-    'FUT': ['ES', 'NQ', 'RTY', 'YM', 'CL', 'GC', 'SI', 'NG', 'ZB', 'ZN'],
-    'OPT': ['ES', 'NQ', 'CL', 'GC']
-  },
-  'NYMEX': {
-    'FUT': ['CL', 'NG', 'HO', 'RB', 'PA', 'PL'],
-    'CMDTY': ['CL', 'NG', 'HO', 'RB']
-  },
-  'COMEX': {
-    'FUT': ['GC', 'SI', 'HG', 'PL', 'PA'],
-    'CMDTY': ['GC', 'SI', 'HG']
-  },
-  'CBOT': {
-    'FUT': ['ZC', 'ZS', 'ZW', 'ZM', 'ZL', 'ZB', 'ZN', 'ZT', 'ZF'],
-    'CMDTY': ['ZC', 'ZS', 'ZW']
-  },
-  'EUREX': {
-    'FUT': ['FDAX', 'FESX', 'FGBL', 'FGBM', 'FGBS', 'FSMI'],
-    'OPT': ['ODAX', 'OESX']
-  },
-  'LSE': {
-    'STK': ['HSBA', 'BP', 'SHEL', 'GSK', 'AZN', 'ULVR', 'RIO', 'DGE', 'BARC', 'LLOY'],
-    'IND': ['UKX', 'MCX']
-  },
-  'TSE': {
-    'STK': ['7203', '6758', '9984', '8306', '7267', '9432', '6861', '4502', '7974', '8035'],
-    'IND': ['N225']
-  },
-  'HKEX': {
-    'STK': ['0700', '9988', '0005', '1299', '0941', '2318', '0388', '0883', '0016', '0001'],
-    'IND': ['HSI']
-  },
-  'SGX': {
-    'FUT': ['SGP', 'TW', 'NK', 'IN'],
-    'STK': ['D05', 'O39', 'U11', 'Z74', 'BN4']
-  },
-  'PAXOS': {
-    'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'PAXG']
   }
 };
 
@@ -224,19 +170,34 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
 
   // Handle region change
   const handleRegionChange = (region: 'US' | 'AU' | 'GLOBAL') => {
-    const regionDefaults: Record<'US' | 'AU' | 'GLOBAL', { exchange: string; secType: string; currency: string }> = {
-      US: { exchange: 'SMART', secType: 'STK', currency: 'USD' },
-      AU: { exchange: 'ASX', secType: 'STK', currency: 'AUD' },
-      GLOBAL: { exchange: 'IDEALPRO', secType: 'CASH', currency: 'USD' }
-    };
+    let exchange: string;
+    let secType: string;
+    let currency: string;
     
-    const defaults = regionDefaults[region];
+    switch (region) {
+      case 'US':
+        exchange = 'SMART';
+        secType = 'STK';
+        currency = 'USD';
+        break;
+      case 'AU':
+        exchange = 'ASX';
+        secType = 'STK';
+        currency = 'AUD';
+        break;
+      case 'GLOBAL':
+        exchange = 'PAXOS';
+        secType = 'CRYPTO';
+        currency = 'USD';
+        break;
+    }
+    
     const newFilters = {
       region,
-      exchange: defaults.exchange,
-      secType: defaults.secType,
+      exchange,
+      secType,
       symbol: '',
-      currency: defaults.currency,
+      currency,
       searchTerm: ''
     };
     setFilters(newFilters);
@@ -397,7 +358,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            🇺🇸 United States
+            United States
           </button>
           <button
             onClick={() => handleRegionChange('AU')}
@@ -408,7 +369,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            🇦🇺 Australia
+            Australia
           </button>
           <button
             onClick={() => handleRegionChange('GLOBAL')}
@@ -419,7 +380,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            🌍 Global
+            Global
           </button>
         </div>
       </div>
