@@ -7,7 +7,7 @@ import PeriodDateFilters from './PeriodDateFilters';
 export interface DownloadConfig {
   // Common filter states
   exchangeFilters: {
-    region: 'US' | 'AU';
+    region: 'US' | 'AU' | 'GLOBAL';
     exchange: string;
     secType: string;
     symbol: string;
