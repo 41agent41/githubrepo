@@ -1,124 +1,32 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  REGIONS,
+  CURRENCIES,
+  POPULAR_SYMBOLS,
+  PRODUCT_TYPES,
+  getExchangesByRegion,
+  getExchangesByCountry,
+  getProductTypesForExchange,
+  getCurrenciesForCountry,
+  getPopularSymbolsForExchange,
+  getDefaultExchange,
+  getDefaultProductType,
+  getCountryForExchange,
+  type Exchange,
+  type ProductType,
+  type ProductTypeConfig,
+  type CurrencyConfig
+} from '../config/exchanges';
 
-// Exchange and Security Type definitions for US, Australian, and Global markets
-const EXCHANGES = {
-  US: [
-    { value: 'SMART', label: 'SMART (Best Execution)', description: 'Automated routing for best execution' },
-    { value: 'NASDAQ', label: 'NASDAQ', description: 'National Association of Securities Dealers Automated Quotations' },
-    { value: 'NYSE', label: 'NYSE', description: 'New York Stock Exchange' },
-    { value: 'ARCA', label: 'ARCA', description: 'NYSE Arca Exchange' },
-    { value: 'BATS', label: 'BATS', description: 'BATS Exchange' },
-    { value: 'EDGX', label: 'EDGX', description: 'CBOE EDGX Exchange' },
-    { value: 'EDGA', label: 'EDGA', description: 'CBOE EDGA Exchange' },
-    { value: 'IEX', label: 'IEX', description: 'Investors Exchange' },
-    { value: 'LTSE', label: 'LTSE', description: 'Long-Term Stock Exchange' },
-    { value: 'PSX', label: 'PSX', description: 'NASDAQ PSX' }
-  ],
-  AU: [
-    { value: 'ASX', label: 'ASX (Australian Stock Exchange)', description: 'Australian Securities Exchange' },
-    { value: 'ASXCEN', label: 'ASXCEN (ASX Centre Point)', description: 'ASX Centre Point Dark Pool' },
-    { value: 'CHIXAU', label: 'CHIXAU (CBOE Australia)', description: 'CBOE Australia (formerly Chi-X)' },
-    { value: 'SNFE', label: 'SNFE (Sydney Futures Exchange)', description: 'Sydney Futures Exchange for futures and options' }
-  ],
-  GLOBAL: [
-    { value: 'PAXOS', label: 'PAXOS (Cryptocurrency)', description: 'Paxos cryptocurrency exchange for digital assets' },
-    { value: 'IDEALPRO', label: 'IDEALPRO (Forex)', description: 'Interactive Brokers forex exchange for currency pairs' }
-  ]
-};
-
-const SECURITY_TYPES = {
-  US: [
-    { value: 'STK', label: 'Stock', description: 'Common and preferred stocks' },
-    { value: 'OPT', label: 'Option', description: 'Stock and index options' },
-    { value: 'ETF', label: 'ETF', description: 'Exchange Traded Funds' },
-    { value: 'FUT', label: 'Future', description: 'Futures contracts' },
-    { value: 'CASH', label: 'Forex', description: 'Foreign exchange pairs' },
-    { value: 'BOND', label: 'Bond', description: 'Government and corporate bonds' },
-    { value: 'CRYPTO', label: 'Cryptocurrency', description: 'Digital currencies' }
-  ],
-  AU: [
-    { value: 'STK', label: 'Stock', description: 'Australian stocks' },
-    { value: 'OPT', label: 'Option', description: 'Australian options' },
-    { value: 'ETF', label: 'ETF', description: 'Australian ETFs' },
-    { value: 'FUT', label: 'Future', description: 'Australian futures' },
-    { value: 'CASH', label: 'Forex', description: 'Foreign exchange pairs' },
-    { value: 'BOND', label: 'Bond', description: 'Australian government and corporate bonds' },
-    { value: 'WAR', label: 'Warrant', description: 'Warrants and structured products' }
-  ],
-  GLOBAL: [
-    { value: 'CRYPTO', label: 'Cryptocurrency', description: 'Digital currencies (Bitcoin, Ethereum, etc.)' },
-    { value: 'CASH', label: 'Forex', description: 'Foreign exchange currency pairs' }
-  ]
-};
-
-const CURRENCIES = {
-  US: [
-    { value: 'USD', label: 'USD', description: 'US Dollar' },
-    { value: 'EUR', label: 'EUR', description: 'Euro' },
-    { value: 'GBP', label: 'GBP', description: 'British Pound' },
-    { value: 'JPY', label: 'JPY', description: 'Japanese Yen' },
-    { value: 'CAD', label: 'CAD', description: 'Canadian Dollar' }
-  ],
-  AU: [
-    { value: 'AUD', label: 'AUD', description: 'Australian Dollar' },
-    { value: 'USD', label: 'USD', description: 'US Dollar' },
-    { value: 'EUR', label: 'EUR', description: 'Euro' },
-    { value: 'GBP', label: 'GBP', description: 'British Pound' },
-    { value: 'JPY', label: 'JPY', description: 'Japanese Yen' }
-  ],
-  GLOBAL: [
-    { value: 'USD', label: 'USD', description: 'US Dollar' },
-    { value: 'EUR', label: 'EUR', description: 'Euro' },
-    { value: 'GBP', label: 'GBP', description: 'British Pound' },
-    { value: 'JPY', label: 'JPY', description: 'Japanese Yen' },
-    { value: 'AUD', label: 'AUD', description: 'Australian Dollar' },
-    { value: 'CAD', label: 'CAD', description: 'Canadian Dollar' },
-    { value: 'CHF', label: 'CHF', description: 'Swiss Franc' },
-    { value: 'NZD', label: 'NZD', description: 'New Zealand Dollar' },
-    { value: 'HKD', label: 'HKD', description: 'Hong Kong Dollar' },
-    { value: 'SGD', label: 'SGD', description: 'Singapore Dollar' }
-  ]
-};
-
-// Popular symbols by exchange and security type
-const POPULAR_SYMBOLS: Record<string, Record<string, string[]>> = {
-  'NASDAQ': {
-    'STK': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'ADBE', 'CRM'],
-    'ETF': ['QQQ', 'TQQQ', 'SQQQ', 'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLU', 'XLY']
-  },
-  'NYSE': {
-    'STK': ['JPM', 'JNJ', 'PG', 'UNH', 'HD', 'MA', 'V', 'DIS', 'PYPL', 'BAC'],
-    'ETF': ['SPY', 'VTI', 'VOO', 'IVV', 'DIA', 'IWM', 'GLD', 'SLV', 'TLT', 'VEA']
-  },
-  'ASX': {
-    'STK': ['CBA', 'CSL', 'NAB', 'ANZ', 'WBC', 'BHP', 'RIO', 'WES', 'WOW', 'MQG'],
-    'ETF': ['VAS', 'VGS', 'VAF', 'VGE', 'VGT', 'VISM', 'VESG', 'VDHG', 'VTS', 'VEU'],
-    'OPT': ['CBAO', 'CSLO', 'BHPO', 'WBCO', 'NABO', 'ANZO', 'RIOO', 'WESO', 'MQGO', 'TLSO'],
-    'WAR': ['CBAW', 'CSLW', 'BHPW', 'WBCW', 'NABW', 'ANZW', 'RIOW', 'WESW', 'MQGW', 'TLSW']
-  },
-  'ASXCEN': {
-    'STK': ['CBA', 'CSL', 'NAB', 'ANZ', 'WBC', 'BHP', 'RIO', 'WES', 'WOW', 'MQG']
-  },
-  'CHIXAU': {
-    'STK': ['CBA', 'CSL', 'NAB', 'ANZ', 'WBC', 'BHP', 'RIO', 'WES', 'WOW', 'MQG'],
-    'WAR': ['CBAW', 'CSLW', 'BHPW', 'WBCW', 'NABW', 'ANZW', 'RIOW', 'WESW', 'MQGW', 'TLSW']
-  },
-  'SNFE': {
-    'FUT': ['SPI', 'YT', 'IR', 'XT', 'TF', 'CF', 'WF', 'SF', 'MF', 'BF'],
-    'OPT': ['SPIO', 'YTO', 'IRO', 'XTO', 'TFO', 'CFO', 'WFO', 'SFO', 'MFO', 'BFO']
-  },
-  'PAXOS': {
-    'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'PAXG', 'USDC', 'USDP']
-  },
-  'IDEALPRO': {
-    'CASH': ['EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD', 'EUR.GBP', 'EUR.JPY', 'GBP.JPY']
-  }
-};
+// =============================================================================
+// INTERFACES
+// =============================================================================
 
 interface FilterState {
-  region: 'US' | 'AU' | 'GLOBAL';
+  region: string;
+  country: string;
   exchange: string;
   secType: string;
   symbol: string;
@@ -131,9 +39,14 @@ interface ExchangeDrivenFiltersProps {
   disabled?: boolean;
 }
 
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
 export default function ExchangeDrivenFilters({ onFiltersChange, disabled = false }: ExchangeDrivenFiltersProps) {
   const [filters, setFilters] = useState<FilterState>({
-    region: 'US',
+    region: 'AMERICAS',
+    country: 'US',
     exchange: 'SMART',
     secType: 'STK',
     symbol: '',
@@ -141,91 +54,126 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
     searchTerm: ''
   });
 
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  // Get available exchanges for selected region
-  const getAvailableExchanges = () => EXCHANGES[filters.region];
+  // =============================================================================
+  // MEMOIZED DATA GETTERS
+  // =============================================================================
 
-  // Get available security types for selected region
-  const getAvailableSecTypes = () => SECURITY_TYPES[filters.region];
+  // Get region configuration
+  const currentRegion = useMemo(() => {
+    return REGIONS.find(r => r.code === filters.region);
+  }, [filters.region]);
 
-  // Get available currencies for selected region
-  const getAvailableCurrencies = () => CURRENCIES[filters.region];
+  // Get countries for current region
+  const availableCountries = useMemo(() => {
+    return currentRegion?.countries || [];
+  }, [currentRegion]);
 
-  // Get popular symbols for selected exchange and secType
-  const getPopularSymbols = () => {
-    const exchangeSymbols = POPULAR_SYMBOLS[filters.exchange];
-    if (!exchangeSymbols) return [];
-    return exchangeSymbols[filters.secType] || [];
-  };
+  // Get exchanges for current country
+  const availableExchanges = useMemo(() => {
+    return getExchangesByCountry(filters.country);
+  }, [filters.country]);
 
-  // Update filters and notify parent
-  const updateFilters = (updates: Partial<FilterState>) => {
-    const newFilters = { ...filters, ...updates };
-    setFilters(newFilters);
-    onFiltersChange(newFilters);
-  };
+  // Get product types for current exchange
+  const availableProductTypes = useMemo(() => {
+    return getProductTypesForExchange(filters.exchange);
+  }, [filters.exchange]);
+
+  // Get currencies for current country
+  const availableCurrencies = useMemo(() => {
+    return getCurrenciesForCountry(filters.country);
+  }, [filters.country]);
+
+  // Get popular symbols for current exchange and product type
+  const popularSymbols = useMemo(() => {
+    return getPopularSymbolsForExchange(filters.exchange, filters.secType);
+  }, [filters.exchange, filters.secType]);
+
+  // =============================================================================
+  // FILTER UPDATE HANDLERS
+  // =============================================================================
 
   // Handle region change
-  const handleRegionChange = (region: 'US' | 'AU' | 'GLOBAL') => {
-    let exchange: string;
-    let secType: string;
-    let currency: string;
-    
-    switch (region) {
-      case 'US':
-        exchange = 'SMART';
-        secType = 'STK';
-        currency = 'USD';
-        break;
-      case 'AU':
-        exchange = 'ASX';
-        secType = 'STK';
-        currency = 'AUD';
-        break;
-      case 'GLOBAL':
-        exchange = 'PAXOS';
-        secType = 'CRYPTO';
-        currency = 'USD';
-        break;
-    }
-    
-    const newFilters = {
-      region,
-      exchange,
-      secType,
+  const handleRegionChange = (regionCode: string) => {
+    const region = REGIONS.find(r => r.code === regionCode);
+    if (!region) return;
+
+    const defaultCountry = region.countries[0];
+    const defaultExchange = getDefaultExchange(defaultCountry.code);
+    const defaultSecType = getDefaultProductType(defaultExchange);
+
+    const newFilters: FilterState = {
+      region: regionCode,
+      country: defaultCountry.code,
+      exchange: defaultExchange,
+      secType: defaultSecType,
       symbol: '',
-      currency,
+      currency: defaultCountry.currency,
       searchTerm: ''
     };
+
+    setFilters(newFilters);
+    onFiltersChange(newFilters);
+    setSearchResults([]);
+  };
+
+  // Handle country change (within Americas region)
+  const handleCountryChange = (countryCode: string) => {
+    const country = availableCountries.find(c => c.code === countryCode);
+    if (!country) return;
+
+    const defaultExchange = getDefaultExchange(countryCode);
+    const defaultSecType = getDefaultProductType(defaultExchange);
+
+    const newFilters: FilterState = {
+      ...filters,
+      country: countryCode,
+      exchange: defaultExchange,
+      secType: defaultSecType,
+      symbol: '',
+      currency: country.currency,
+      searchTerm: ''
+    };
+
     setFilters(newFilters);
     onFiltersChange(newFilters);
     setSearchResults([]);
   };
 
   // Handle exchange change
-  const handleExchangeChange = (exchange: string) => {
-    const newFilters = {
+  const handleExchangeChange = (exchangeCode: string) => {
+    const exchange = availableExchanges.find(e => e.value === exchangeCode);
+    if (!exchange) return;
+
+    // Check if current secType is valid for new exchange
+    const validSecTypes = getProductTypesForExchange(exchangeCode);
+    const secTypeValid = validSecTypes.some(st => st.value === filters.secType);
+    const newSecType = secTypeValid ? filters.secType : getDefaultProductType(exchangeCode);
+
+    const newFilters: FilterState = {
       ...filters,
-      exchange,
+      exchange: exchangeCode,
+      secType: newSecType,
       symbol: '',
       searchTerm: ''
     };
+
     setFilters(newFilters);
     onFiltersChange(newFilters);
     setSearchResults([]);
   };
 
-  // Handle secType change
+  // Handle security type change
   const handleSecTypeChange = (secType: string) => {
-    const newFilters = {
+    const newFilters: FilterState = {
       ...filters,
       secType,
       symbol: '',
       searchTerm: ''
     };
+
     setFilters(newFilters);
     onFiltersChange(newFilters);
     setSearchResults([]);
@@ -233,26 +181,31 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
 
   // Handle symbol change
   const handleSymbolChange = (symbol: string) => {
-    const newFilters = {
+    const newFilters: FilterState = {
       ...filters,
       symbol: symbol.toUpperCase(),
       searchTerm: symbol
     };
+
     setFilters(newFilters);
     onFiltersChange(newFilters);
   };
 
   // Handle currency change
   const handleCurrencyChange = (currency: string) => {
-    const newFilters = {
+    const newFilters: FilterState = {
       ...filters,
       currency
     };
+
     setFilters(newFilters);
     onFiltersChange(newFilters);
   };
 
-  // Enhanced symbol search using the new discovery endpoint
+  // =============================================================================
+  // SYMBOL SEARCH
+  // =============================================================================
+
   const searchSymbols = async (searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 1) {
       setSearchResults([]);
@@ -266,7 +219,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
         throw new Error('API URL not configured');
       }
 
-      // Use the new enhanced symbol discovery endpoint
+      // Use the enhanced symbol discovery endpoint
       const response = await fetch(`${apiUrl}/api/market-data/symbols/discover`, {
         method: 'POST',
         headers: {
@@ -291,7 +244,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
       } else {
         console.error('Symbol discovery failed:', response.statusText);
         
-        // Fallback to the old search method if the new one fails
+        // Fallback to the old search method
         try {
           const fallbackResponse = await fetch(`${apiUrl}/api/market-data/search`, {
             method: 'POST',
@@ -336,10 +289,14 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
       } else {
         setSearchResults([]);
       }
-    }, 500); // Increased debounce time for better performance
+    }, 500);
 
     return () => clearTimeout(timeoutId);
   }, [filters.searchTerm, filters.exchange, filters.secType, filters.currency]);
+
+  // =============================================================================
+  // RENDER
+  // =============================================================================
 
   return (
     <div className="space-y-4">
@@ -349,46 +306,57 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
           Market Region
         </label>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => handleRegionChange('US')}
-            disabled={disabled}
-            className={`px-4 py-2 text-sm rounded-md font-medium ${
-              filters.region === 'US'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            United States
-          </button>
-          <button
-            onClick={() => handleRegionChange('AU')}
-            disabled={disabled}
-            className={`px-4 py-2 text-sm rounded-md font-medium ${
-              filters.region === 'AU'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            Australia
-          </button>
-          <button
-            onClick={() => handleRegionChange('GLOBAL')}
-            disabled={disabled}
-            className={`px-4 py-2 text-sm rounded-md font-medium ${
-              filters.region === 'GLOBAL'
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            Global
-          </button>
+          {REGIONS.map((region) => (
+            <button
+              key={region.code}
+              onClick={() => handleRegionChange(region.code)}
+              disabled={disabled}
+              className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
+                filters.region === region.code
+                  ? region.code === 'GLOBAL'
+                    ? 'bg-purple-600 text-white'
+                    : region.code === 'AU'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {region.label}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Country Selection (only show if region has multiple countries) */}
+      {availableCountries.length > 1 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Country
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {availableCountries.map((country) => (
+              <button
+                key={country.code}
+                onClick={() => handleCountryChange(country.code)}
+                disabled={disabled}
+                className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
+                  filters.country === country.code
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {country.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Exchange Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Exchange
+          <span className="text-xs text-gray-500 ml-2">({availableExchanges.length} available)</span>
         </label>
         <select
           value={filters.exchange}
@@ -396,37 +364,37 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
           disabled={disabled}
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {getAvailableExchanges().map((exchange) => (
+          {availableExchanges.map((exchange) => (
             <option key={exchange.value} value={exchange.value}>
-              {exchange.label}
+              {exchange.label} - {exchange.description}
             </option>
           ))}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
-          {getAvailableExchanges().find(e => e.value === filters.exchange)?.description}
-        </p>
+        {availableExchanges.find(e => e.value === filters.exchange) && (
+          <p className="text-xs text-gray-500 mt-1">
+            Products: {availableExchanges.find(e => e.value === filters.exchange)?.products.join(', ')}
+          </p>
+        )}
       </div>
 
       {/* Security Type Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Security Type
+          Product Type
+          <span className="text-xs text-gray-500 ml-2">({availableProductTypes.length} for this exchange)</span>
         </label>
         <select
           value={filters.secType}
           onChange={(e) => handleSecTypeChange(e.target.value)}
-          disabled={disabled}
+          disabled={disabled || availableProductTypes.length === 0}
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {getAvailableSecTypes().map((secType) => (
-            <option key={secType.value} value={secType.value}>
-              {secType.label}
+          {availableProductTypes.map((productType) => (
+            <option key={productType.value} value={productType.value}>
+              {productType.label} - {productType.description}
             </option>
           ))}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
-          {getAvailableSecTypes().find(s => s.value === filters.secType)?.description}
-        </p>
       </div>
 
       {/* Symbol Search */}
@@ -452,7 +420,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
 
         {/* Search Results */}
         {searchResults.length > 0 && (
-          <div className="mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-md">
+          <div className="mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-sm">
             {searchResults.map((result, index) => (
               <button
                 key={index}
@@ -470,16 +438,16 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
         )}
 
         {/* Popular Symbols */}
-        {!filters.searchTerm && getPopularSymbols().length > 0 && (
+        {!filters.searchTerm && popularSymbols.length > 0 && (
           <div className="mt-2">
             <p className="text-xs text-gray-500 mb-1">Popular symbols:</p>
             <div className="flex flex-wrap gap-1">
-              {getPopularSymbols().map((symbol) => (
+              {popularSymbols.slice(0, 10).map((symbol) => (
                 <button
                   key={symbol}
                   onClick={() => handleSymbolChange(symbol)}
                   disabled={disabled}
-                  className={`px-2 py-1 text-xs rounded ${
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
                     filters.symbol === symbol
                       ? 'bg-blue-500 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -504,7 +472,7 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
           disabled={disabled}
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {getAvailableCurrencies().map((currency) => (
+          {availableCurrencies.map((currency) => (
             <option key={currency.value} value={currency.value}>
               {currency.label} - {currency.description}
             </option>
@@ -516,13 +484,28 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
       {filters.symbol && (
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
           <p className="text-sm text-blue-800">
-            <span className="font-medium">Selected:</span> {filters.symbol} ({filters.exchange} - {filters.secType})
+            <span className="font-medium">Selected:</span> {filters.symbol}
           </p>
           <p className="text-xs text-blue-600 mt-1">
-            Currency: {filters.currency} | Region: {filters.region}
+            Exchange: {filters.exchange} | Type: {filters.secType} | Currency: {filters.currency}
+          </p>
+          <p className="text-xs text-blue-500 mt-0.5">
+            Region: {currentRegion?.label} {availableCountries.length > 1 ? `/ ${filters.country}` : ''}
+          </p>
+        </div>
+      )}
+
+      {/* Exchange Info Card */}
+      {!filters.symbol && (
+        <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+          <p className="text-xs text-gray-600">
+            <span className="font-medium">{filters.exchange}</span>: {availableExchanges.find(e => e.value === filters.exchange)?.description}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Available products: {availableProductTypes.map(pt => pt.label).join(', ')}
           </p>
         </div>
       )}
     </div>
   );
-} 
+}

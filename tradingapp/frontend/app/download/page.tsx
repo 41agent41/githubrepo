@@ -71,7 +71,8 @@ export default function DownloadPage() {
   // Centralized configuration state
   const [config, setConfig] = useState<DownloadConfig>({
     exchangeFilters: {
-      region: 'US' as 'US' | 'AU' | 'GLOBAL',
+      region: 'AMERICAS',
+      country: 'US',
       exchange: 'SMART',
       secType: 'STK',
       symbol: 'MSFT',

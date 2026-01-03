@@ -33,7 +33,8 @@ export default function HistoricalChartPage() {
   
   // Enhanced filter state
   const [exchangeFilters, setExchangeFilters] = useState({
-    region: 'US' as 'US' | 'AU' | 'GLOBAL',
+    region: 'AMERICAS',
+    country: 'US',
     exchange: 'SMART',
     secType: 'STK',
     symbol: '',

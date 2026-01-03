@@ -1,24 +1,25 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import EnhancedTradingChart from './EnhancedTradingChart';
 import { useTradingAccount } from '../contexts/TradingAccountContext';
+import {
+  REGIONS,
+  PRODUCT_TYPES,
+  CURRENCIES,
+  getExchangesByCountry,
+  getProductTypesForExchange,
+  getCurrenciesForCountry,
+  getDefaultExchange,
+  getDefaultProductType,
+  type Exchange,
+  type ProductTypeConfig,
+  type CurrencyConfig
+} from '../config/exchanges';
 
-interface SecurityType {
-  value: string;
-  label: string;
-  description: string;
-}
-
-interface Exchange {
-  value: string;
-  label: string;
-}
-
-interface Currency {
-  value: string;
-  label: string;
-}
+// =============================================================================
+// LOCAL INTERFACES
+// =============================================================================
 
 interface Timeframe {
   value: string;
@@ -76,44 +77,9 @@ interface MarketData {
   changePercent?: number;
 }
 
-const SECURITY_TYPES: SecurityType[] = [
-  { value: 'STK', label: 'Stocks', description: 'Stocks and ETFs' },
-  { value: 'OPT', label: 'Options', description: 'Stock and Index Options' },
-  { value: 'FUT', label: 'Futures', description: 'Futures Contracts' },
-  { value: 'CASH', label: 'Forex', description: 'Currency Pairs' },
-  { value: 'BOND', label: 'Bonds', description: 'Fixed Income' },
-  { value: 'CFD', label: 'CFDs', description: 'Contracts for Difference' },
-  { value: 'CMDTY', label: 'Commodities', description: 'Commodity Contracts' },
-  { value: 'CRYPTO', label: 'Crypto', description: 'Cryptocurrencies' },
-  { value: 'WAR', label: 'Warrants', description: 'Stock Warrants' },
-  { value: 'FUND', label: 'Funds', description: 'Mutual Funds' },
-  { value: 'IND', label: 'Indices', description: 'Market Indices' },
-  { value: 'BAG', label: 'Baskets', description: 'Basket Products' }
-];
-
-const EXCHANGES: Exchange[] = [
-  { value: 'SMART', label: 'SMART (Best Execution)' },
-  { value: 'NYSE', label: 'New York Stock Exchange' },
-  { value: 'NASDAQ', label: 'NASDAQ' },
-  { value: 'AMEX', label: 'American Stock Exchange' },
-  { value: 'EUREX', label: 'Eurex' },
-  { value: 'LSE', label: 'London Stock Exchange' },
-  { value: 'TSE', label: 'Tokyo Stock Exchange' },
-  { value: 'IDEALPRO', label: 'Forex (IDEALPRO)' },
-  { value: 'CME', label: 'Chicago Mercantile Exchange' },
-  { value: 'CBOE', label: 'Chicago Board Options Exchange' }
-];
-
-const CURRENCIES: Currency[] = [
-  { value: 'USD', label: 'US Dollar' },
-  { value: 'EUR', label: 'Euro' },
-  { value: 'GBP', label: 'British Pound' },
-  { value: 'JPY', label: 'Japanese Yen' },
-  { value: 'CAD', label: 'Canadian Dollar' },
-  { value: 'AUD', label: 'Australian Dollar' },
-  { value: 'CHF', label: 'Swiss Franc' },
-  { value: 'HKD', label: 'Hong Kong Dollar' }
-];
+// =============================================================================
+// STATIC DATA
+// =============================================================================
 
 const TIMEFRAMES: Timeframe[] = [
   { value: '1min', label: '1m', minutes: 1 },
@@ -139,8 +105,16 @@ const POPULAR_SYMBOLS = [
   { symbol: 'IWM', name: 'iShares Russell 2000 ETF' }
 ];
 
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
 export default function MarketDataFilter() {
   const { accountMode, dataType } = useTradingAccount();
+  
+  // Region and country state
+  const [region, setRegion] = useState('AMERICAS');
+  const [country, setCountry] = useState('US');
   
   // Basic filter state
   const [symbol, setSymbol] = useState('');
@@ -175,6 +149,39 @@ export default function MarketDataFilter() {
   // Track if search should be auto-triggered
   const [autoSearchTrigger, setAutoSearchTrigger] = useState<string | null>(null);
 
+  // =============================================================================
+  // MEMOIZED DATA
+  // =============================================================================
+
+  // Get current region configuration
+  const currentRegion = useMemo(() => {
+    return REGIONS.find(r => r.code === region);
+  }, [region]);
+
+  // Get countries for current region
+  const availableCountries = useMemo(() => {
+    return currentRegion?.countries || [];
+  }, [currentRegion]);
+
+  // Get exchanges for current country
+  const availableExchanges = useMemo(() => {
+    return getExchangesByCountry(country);
+  }, [country]);
+
+  // Get product types for current exchange
+  const availableProductTypes = useMemo(() => {
+    return getProductTypesForExchange(exchange);
+  }, [exchange]);
+
+  // Get currencies for current country
+  const availableCurrencies = useMemo(() => {
+    return getCurrenciesForCountry(country);
+  }, [country]);
+
+  // =============================================================================
+  // EFFECTS
+  // =============================================================================
+
   useEffect(() => {
     checkConnection();
   }, []);
@@ -183,9 +190,13 @@ export default function MarketDataFilter() {
   useEffect(() => {
     if (autoSearchTrigger && symbol === autoSearchTrigger) {
       handleSearch();
-      setAutoSearchTrigger(null); // Reset after triggering
+      setAutoSearchTrigger(null);
     }
   }, [autoSearchTrigger, symbol]);
+
+  // =============================================================================
+  // HANDLERS
+  // =============================================================================
 
   const checkConnection = async () => {
     try {
@@ -205,8 +216,64 @@ export default function MarketDataFilter() {
     }
   };
 
+  // Handle region change
+  const handleRegionChange = (newRegion: string) => {
+    const regionConfig = REGIONS.find(r => r.code === newRegion);
+    if (!regionConfig) return;
+
+    const defaultCountry = regionConfig.countries[0];
+    const defaultExch = getDefaultExchange(defaultCountry.code);
+    const defaultSecType = getDefaultProductType(defaultExch);
+
+    setRegion(newRegion);
+    setCountry(defaultCountry.code);
+    setExchange(defaultExch);
+    setSecurityType(defaultSecType);
+    setCurrency(defaultCountry.currency);
+    
+    // Clear search results
+    setSearchResults([]);
+    setSelectedContract(null);
+    setMarketData(null);
+    setShowChart(false);
+  };
+
+  // Handle country change
+  const handleCountryChange = (newCountry: string) => {
+    const countryConfig = availableCountries.find(c => c.code === newCountry);
+    if (!countryConfig) return;
+
+    const defaultExch = getDefaultExchange(newCountry);
+    const defaultSecType = getDefaultProductType(defaultExch);
+
+    setCountry(newCountry);
+    setExchange(defaultExch);
+    setSecurityType(defaultSecType);
+    setCurrency(countryConfig.currency);
+    
+    // Clear search results
+    setSearchResults([]);
+    setSelectedContract(null);
+    setMarketData(null);
+    setShowChart(false);
+  };
+
+  // Handle exchange change
+  const handleExchangeChange = (newExchange: string) => {
+    const exchangeConfig = availableExchanges.find(e => e.value === newExchange);
+    if (!exchangeConfig) return;
+
+    // Check if current secType is valid for new exchange
+    const validSecTypes = getProductTypesForExchange(newExchange);
+    const secTypeValid = validSecTypes.some(st => st.value === securityType);
+    
+    setExchange(newExchange);
+    if (!secTypeValid && validSecTypes.length > 0) {
+      setSecurityType(getDefaultProductType(newExchange));
+    }
+  };
+
   const handleSearch = async () => {
-    // For advanced search, symbol is optional
     if (!showAdvancedSearch && !symbol.trim()) {
       setError('Please enter a symbol to search');
       return;
@@ -265,7 +332,6 @@ export default function MarketDataFilter() {
       if (data.results && data.results.length > 0) {
         setSearchResults(data.results);
         
-        // Save to search history
         if (symbol.trim()) {
           const newHistory = [symbol.trim().toUpperCase(), ...searchHistory.filter(h => h !== symbol.trim().toUpperCase())].slice(0, 10);
           setSearchHistory(newHistory);
@@ -317,24 +383,23 @@ export default function MarketDataFilter() {
   };
 
   const handleQuickSearch = async (quickSymbol: string) => {
-    // Clear any previous errors
     setError(null);
-    
-    // Clear previous results
     setSearchResults([]);
     setSelectedContract(null);
     setMarketData(null);
     setShowChart(false);
     
-    // Update state
     setSymbol(quickSymbol);
     setSecurityType('STK');
     setExchange('SMART');
     setCurrency('USD');
     
-    // Set the auto-search trigger
     setAutoSearchTrigger(quickSymbol);
   };
+
+  // =============================================================================
+  // RENDER
+  // =============================================================================
 
   return (
     <div className="space-y-6">
@@ -394,6 +459,61 @@ export default function MarketDataFilter() {
           <h3 className="text-base sm:text-lg font-medium text-gray-900">Search Filters</h3>
         </div>
 
+        {/* Region and Country Selection */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Region Selection */}
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                Market Region
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {REGIONS.map((r) => (
+                  <button
+                    key={r.code}
+                    onClick={() => handleRegionChange(r.code)}
+                    className={`px-3 py-1.5 text-xs sm:text-sm rounded-md font-medium transition-colors ${
+                      region === r.code
+                        ? r.code === 'GLOBAL'
+                          ? 'bg-purple-600 text-white'
+                          : r.code === 'AU'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Country Selection (only show if region has multiple countries) */}
+            {availableCountries.length > 1 && (
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  Country
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {availableCountries.map((c) => (
+                    <button
+                      key={c.code}
+                      onClick={() => handleCountryChange(c.code)}
+                      className={`px-3 py-1.5 text-xs sm:text-sm rounded-md font-medium transition-colors ${
+                        country === c.code
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
           {/* Symbol Search */}
           <div>
@@ -446,17 +566,26 @@ export default function MarketDataFilter() {
           <div>
             <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Security Type
+              <span className="text-xs text-gray-500 ml-1">({availableProductTypes.length} for {exchange})</span>
             </label>
             <select
               value={securityType}
               onChange={(e) => setSecurityType(e.target.value)}
               className="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {SECURITY_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label} - {type.description}
-                </option>
-              ))}
+              {availableProductTypes.length > 0 ? (
+                availableProductTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label} - {type.description}
+                  </option>
+                ))
+              ) : (
+                PRODUCT_TYPES.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label} - {type.description}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -464,15 +593,16 @@ export default function MarketDataFilter() {
           <div>
             <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Exchange
+              <span className="text-xs text-gray-500 ml-1">({availableExchanges.length} available)</span>
             </label>
             <select
               value={exchange}
-              onChange={(e) => setExchange(e.target.value)}
+              onChange={(e) => handleExchangeChange(e.target.value)}
               className="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {EXCHANGES.map((ex) => (
+              {availableExchanges.map((ex) => (
                 <option key={ex.value} value={ex.value}>
-                  {ex.label}
+                  {ex.label} - {ex.description}
                 </option>
               ))}
             </select>
@@ -488,9 +618,9 @@ export default function MarketDataFilter() {
               onChange={(e) => setCurrency(e.target.value)}
               className="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {CURRENCIES.map((curr) => (
+              {availableCurrencies.map((curr) => (
                 <option key={curr.value} value={curr.value}>
-                  {curr.label} ({curr.value})
+                  {curr.label} - {curr.description}
                 </option>
               ))}
             </select>
@@ -514,6 +644,18 @@ export default function MarketDataFilter() {
             </select>
           </div>
         </div>
+
+        {/* Exchange Info */}
+        {availableExchanges.find(e => e.value === exchange) && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
+            <p className="text-xs text-blue-800">
+              <span className="font-medium">{exchange}</span>: {availableExchanges.find(e => e.value === exchange)?.description}
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              Available products: {availableExchanges.find(e => e.value === exchange)?.products.join(', ')}
+            </p>
+          </div>
+        )}
 
         {/* Advanced Search Toggle */}
         <div className="flex justify-between items-center mb-4">
@@ -651,12 +793,12 @@ export default function MarketDataFilter() {
             <div>
               <div className="text-blue-800 font-medium mb-1">Search Tips:</div>
               <ul className="text-blue-700 text-sm space-y-1">
-                <li>• Use Quick Search buttons for popular stocks</li>
+                <li>• <strong>Region:</strong> Select Americas for US, Canada, Mexico, or Brazil markets</li>
+                <li>• <strong>Exchange filtering:</strong> Product types automatically update based on selected exchange</li>
+                <li>• Use Quick Search buttons for popular US stocks</li>
                 <li>• Try searching by company name (check "Search by company name")</li>
                 <li>• Use Advanced Search for options, futures, and specific criteria</li>
-                <li>• For options: specify expiry (YYYYMMDD), strike price, and right (C/P)</li>
-                <li>• For futures: specify expiry and multiplier</li>
-                <li>• Recent searches are saved for quick access</li>
+                <li>• For futures options (FOP): Available on CME, CBOT, NYMEX, COMEX</li>
               </ul>
             </div>
           </div>
@@ -819,4 +961,4 @@ export default function MarketDataFilter() {
       )}
     </div>
   );
-} 
+}
