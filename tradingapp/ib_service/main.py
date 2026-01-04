@@ -1294,14 +1294,24 @@ async def get_historical_data(
         # Using format 1 to avoid "unconverted data remains" errors from IB Gateway
         format_date = 1  # Force string format for compatibility
         
+        # Determine whatToShow based on security type
+        # CRYPTO contracts require AGGTRADES instead of TRADES
+        if secType.upper() == 'CRYPTO':
+            what_to_show = 'AGGTRADES'
+            use_rth = 0  # CRYPTO trades 24/7, no regular trading hours
+            logger.info(f"Using AGGTRADES for CRYPTO contract (24/7 trading)")
+        else:
+            what_to_show = 'TRADES'
+            use_rth = 1  # Use regular trading hours for stocks
+        
         ib.reqHistoricalData(
             2,  # reqId
             qualified_contract,
             end_date_str,  # endDateTime (empty string for "now", or specific date)
             ib_duration,  # duration
             ib_timeframe,
-            'TRADES',
-            1,  # useRTH
+            what_to_show,
+            use_rth,  # useRTH: 0 for CRYPTO (24/7), 1 for stocks
             format_date,  # formatDate: 1 for string format (more reliable)
             False,  # keepUpToDate
             []  # chartOptions
