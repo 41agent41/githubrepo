@@ -105,7 +105,7 @@ router.post('/search', async (req: Request, res: Response) => {
       secType: secType,
       exchange: exchange,
       currency: currency,
-      searchByName: searchByName,
+      name: searchByName,  // IB service expects 'name' parameter, not 'searchByName'
       account_mode: account_mode
     }, {
       timeout: 30000, // 30 second timeout for search
@@ -212,7 +212,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
       right: right,
       multiplier: multiplier,
       includeExpired: includeExpired,
-      searchByName: searchByName,
+      name: searchByName,  // IB service expects 'name' parameter, not 'searchByName'
       account_mode: account_mode
     }, {
       timeout: 30000,

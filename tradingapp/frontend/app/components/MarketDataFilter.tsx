@@ -319,6 +319,7 @@ export default function MarketDataFilter() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Data-Query-Enabled': 'true',
         },
         body: JSON.stringify(searchPayload),
       });
@@ -358,7 +359,12 @@ export default function MarketDataFilter() {
         throw new Error('NEXT_PUBLIC_API_URL is not configured');
       }
       const response = await fetch(
-        `${backendUrl}/api/market-data/realtime?symbol=${contract.symbol}&conid=${contract.conid}&account_mode=${accountMode}`
+        `${backendUrl}/api/market-data/realtime?symbol=${contract.symbol}&conid=${contract.conid}&account_mode=${accountMode}`,
+        {
+          headers: {
+            'X-Data-Query-Enabled': 'true',
+          }
+        }
       );
 
       if (response.ok) {
@@ -390,9 +396,11 @@ export default function MarketDataFilter() {
     setShowChart(false);
     
     setSymbol(quickSymbol);
+    // Use current exchange settings instead of resetting to defaults
+    // This respects the user's selected region/country/exchange configuration
+    // Only reset security type to STK for quick stock searches
     setSecurityType('STK');
-    setExchange('SMART');
-    setCurrency('USD');
+    // Keep current exchange and currency based on selected region/country
     
     setAutoSearchTrigger(quickSymbol);
   };
