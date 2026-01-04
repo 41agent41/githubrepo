@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface ContractResult {
   conid: string;
@@ -53,10 +54,8 @@ export default function SymbolSelector({
     setSearchResults([]);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
 
       const response = await fetch(`${backendUrl}/api/market-data/search`, {
         method: 'POST',

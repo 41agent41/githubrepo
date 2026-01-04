@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import DataSwitch from '../components/DataSwitch';
 import BackToHome from '../components/BackToHome';
 import DataframeViewer from '../components/DataframeViewer';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface ConnectionStatus {
   connected: boolean;
@@ -89,11 +90,8 @@ export default function AccountPage() {
     }
   };
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!apiUrl) {
-    console.error('NEXT_PUBLIC_API_URL is not configured');
-    return <div>Configuration error: API URL not set</div>;
-  }
+  // Use dynamic API URL that auto-detects correct backend address
+  const apiUrl = getApiUrl();
 
   // Fetch connection status (independent of account data) - only when needed
   const fetchConnectionStatus = useCallback(async () => {

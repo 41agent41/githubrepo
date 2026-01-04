@@ -10,6 +10,7 @@ import DownloadConfigPanel, { DownloadConfig } from '../components/DownloadConfi
 import DownloadActionButtons, { DownloadStatus as DownloadActionStatus } from '../components/DownloadActionButtons';
 import DownloadDataViewer from '../components/DownloadDataViewer';
 import { createDataResetFunctions, processHistoricalDataBars, validateDownloadConfig } from '../utils/downloadDataManager';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface HistoricalData {
   symbol: string;
@@ -257,10 +258,8 @@ export default function DownloadPage() {
     });
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       // Build query parameters
       const params = new URLSearchParams({
@@ -429,10 +428,8 @@ export default function DownloadPage() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       setDownloadStatus(prev => ({ ...prev, uploadProgress: 'Uploading data to PostgreSQL...' }));
 
@@ -561,10 +558,8 @@ export default function DownloadPage() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       setDownloadStatus(prev => ({ ...prev, uploadProgress: 'Uploading bulk data to PostgreSQL...' }));
 
@@ -755,10 +750,8 @@ export default function DownloadPage() {
     setBulkResults(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const totalOperations = symbolsArray.length * timeframesArray.length;
       setDownloadStatus(prev => ({ 
@@ -917,10 +910,8 @@ export default function DownloadPage() {
     setValidationSampleData(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1M&account_mode=${accountMode}`, {
         method: 'GET',
@@ -977,10 +968,8 @@ export default function DownloadPage() {
     });
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       setDownloadStatus(prev => ({ 
         ...prev, 
@@ -1035,10 +1024,8 @@ export default function DownloadPage() {
   // Health check function
   const checkSystemHealth = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/market-data/health`);
       

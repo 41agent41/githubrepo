@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import DataframeViewer from './DataframeViewer';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface CandlestickData {
   time: Time;
@@ -155,9 +156,10 @@ export default function EnhancedTradingChart({
     setError(null);
     
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
     if (!backendUrl) {
-      console.error('NEXT_PUBLIC_API_URL is not configured');
+      console.error('API URL not available');
       return;
     }
       const response = await fetch(

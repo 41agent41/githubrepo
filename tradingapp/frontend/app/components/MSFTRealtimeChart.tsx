@@ -6,6 +6,7 @@ import DataSwitch from './DataSwitch';
 import IndicatorSelector from './IndicatorSelector';
 import DataframeViewer from './DataframeViewer';
 import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface RealtimeData {
   symbol: string;
@@ -345,10 +346,8 @@ export default function MSFTRealtimeChart() {
     setError(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       // Simple query building
       let url = `${apiUrl}/api/market-data/history?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${accountMode}`;
@@ -487,10 +486,8 @@ export default function MSFTRealtimeChart() {
     }
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('NEXT_PUBLIC_API_URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/market-data/stream?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${accountMode}`, {
         method: 'GET',
@@ -612,10 +609,8 @@ export default function MSFTRealtimeChart() {
     }
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('NEXT_PUBLIC_API_URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/market-data/realtime?symbol=MSFT&account_mode=${accountMode}`, {
         method: 'GET',

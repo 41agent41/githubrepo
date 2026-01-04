@@ -8,6 +8,7 @@ import BackToHome from '../components/BackToHome';
 import ExchangeDrivenFilters from '../components/ExchangeDrivenFilters';
 import PeriodDateFilters from '../components/PeriodDateFilters';
 import TechnicalIndicatorsFilter from '../components/TechnicalIndicatorsFilter';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface HistoricalData {
   symbol: string;
@@ -99,10 +100,8 @@ export default function HistoricalChartPage() {
   // Validate symbol via backend search endpoint before fetching
   const validateSymbol = async (): Promise<boolean> => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/market-data/search`, {
         method: 'POST',
@@ -244,10 +243,8 @@ export default function HistoricalChartPage() {
     setError(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       // Build query parameters
       const params = new URLSearchParams({

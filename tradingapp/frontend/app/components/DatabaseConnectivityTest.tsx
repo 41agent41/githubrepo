@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface DatabaseTestResult {
   test: string;
@@ -54,10 +55,8 @@ export default function DatabaseConnectivityTest({
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       // Run comprehensive database tests
       const response = await fetch(`${apiUrl}/api/database/connectivity-test`, {

@@ -7,6 +7,7 @@ import IndicatorSelector from '../components/IndicatorSelector';
 import StrategySelector from '../components/StrategySelector';
 import PortAllocator from '../components/PortAllocator';
 import BackToHome from '../components/BackToHome';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface ContractResult {
   conid: string;
@@ -49,10 +50,8 @@ export default function TradingSetupPage(): JSX.Element {
     setError(null);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
 
       const response = await fetch(`${backendUrl}/api/trading-setup/create`, {
         method: 'POST',

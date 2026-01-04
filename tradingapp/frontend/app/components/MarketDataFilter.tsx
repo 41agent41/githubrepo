@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import EnhancedTradingChart from './EnhancedTradingChart';
 import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { getApiUrl } from '../utils/apiConfig';
 import {
   REGIONS,
   PRODUCT_TYPES,
@@ -200,7 +201,8 @@ export default function MarketDataFilter() {
 
   const checkConnection = async () => {
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
       if (!backendUrl) {
         setConnectionStatus('Error');
         return;
@@ -287,10 +289,8 @@ export default function MarketDataFilter() {
     setShowChart(false);
 
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('NEXT_PUBLIC_API_URL is not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
 
       const endpoint = showAdvancedSearch ? '/api/market-data/advanced-search' : '/api/market-data/search';
       
@@ -354,10 +354,8 @@ export default function MarketDataFilter() {
     setLoading(true);
 
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('NEXT_PUBLIC_API_URL is not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
       const response = await fetch(
         `${backendUrl}/api/market-data/realtime?symbol=${contract.symbol}&conid=${contract.conid}&account_mode=${accountMode}`,
         {

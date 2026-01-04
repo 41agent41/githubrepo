@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface TechnicalIndicatorsFilterProps {
   onIndicatorsChange: (indicators: string[]) => void;
@@ -51,7 +52,8 @@ export default function TechnicalIndicatorsFilter({ onIndicatorsChange, disabled
     const fetchIndicators = async () => {
       setIsLoading(true);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        // Use dynamic API URL that auto-detects correct backend address
+        const apiUrl = getApiUrl();
         if (!apiUrl) {
           // Fallback to predefined indicators if API is not available
           setAvailableIndicators(INDICATOR_CATEGORIES);

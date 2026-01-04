@@ -3,6 +3,7 @@
 import React from 'react';
 import MSFTRealtimeChart from '../components/MSFTRealtimeChart';
 import BackToHome from '../components/BackToHome';
+import { getApiUrl } from '../utils/apiConfig';
 
 export default function MSFTPage() {
   return (
@@ -34,7 +35,7 @@ export default function MSFTPage() {
           <h3 className="text-base sm:text-lg font-medium text-blue-900 mb-2">Debug Information</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
             <div>
-              <p><strong>API URL:</strong> {process.env.NEXT_PUBLIC_API_URL || 'Not configured'}</p>
+              <p><strong>API URL:</strong> {getApiUrl()}</p>
               <p><strong>Environment:</strong> {process.env.NODE_ENV || 'development'}</p>
             </div>
             <div>
@@ -55,7 +56,7 @@ export default function MSFTPage() {
             Test the API endpoint directly from your browser or terminal:
           </p>
           <div className="bg-gray-800 text-green-400 p-2 sm:p-3 rounded font-mono text-xs sm:text-sm overflow-x-auto">
-            curl "{process.env.NEXT_PUBLIC_API_URL || 'http://10.7.3.20:4000'}/api/market-data/realtime?symbol=MSFT"
+            curl "{getApiUrl()}/api/market-data/realtime?symbol=MSFT"
           </div>
         </div>
       </main>

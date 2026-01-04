@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { getApiUrl } from '../utils/apiConfig';
 import {
   REGIONS,
   CURRENCIES,
@@ -214,10 +215,8 @@ export default function ExchangeDrivenFilters({ onFiltersChange, disabled = fals
 
     setIsSearching(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const apiUrl = getApiUrl();
 
       // Use the enhanced symbol discovery endpoint
       const response = await fetch(`${apiUrl}/api/market-data/symbols/discover`, {

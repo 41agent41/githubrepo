@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import OrderDialog from '../../../components/OrderDialog';
 import OrderHistory from '../../../components/OrderHistory';
 import BackToHome from '../../../components/BackToHome';
+import { getApiUrl } from '../../../utils/apiConfig';
 
 interface CandlestickData {
   time: Time;
@@ -347,7 +348,8 @@ export default function StandaloneChartPage() {
     if (!setupId) return;
 
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
       if (!backendUrl) return;
 
       const response = await fetch(
@@ -374,7 +376,8 @@ export default function StandaloneChartPage() {
       setError(null);
 
       try {
-        const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+        // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
         if (!backendUrl) {
           throw new Error('API URL not configured');
         }
@@ -530,7 +533,8 @@ export default function StandaloneChartPage() {
   useEffect(() => {
     if (!setupId) return;
 
-    const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+    // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
     if (!backendUrl) return;
 
     const socket = io(backendUrl, {
@@ -656,7 +660,8 @@ export default function StandaloneChartPage() {
   useEffect(() => {
     const fetchContractId = async () => {
       try {
-        const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
+        // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
         if (!backendUrl || !setupId) return;
 
         const response = await fetch(`${backendUrl}/api/trading-setup/${setupId}`);

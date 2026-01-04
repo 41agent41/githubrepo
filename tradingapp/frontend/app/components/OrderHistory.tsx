@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import OrderStatusBadge from './OrderStatusBadge';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface Order {
   id: number;
@@ -38,10 +39,8 @@ export default function OrderHistory({ setupId, limit = 20, autoRefresh = false 
     setError(null);
 
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
 
       const params = new URLSearchParams();
       if (setupId) params.append('setup_id', setupId.toString());

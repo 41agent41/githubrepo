@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface OrderDialogProps {
   isOpen: boolean;
@@ -44,10 +45,8 @@ export default function OrderDialog({
     setSuccess(false);
 
     try {
-      const backendUrl = (typeof window !== 'undefined' && (window as any).ENV?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL;
-      if (!backendUrl) {
-        throw new Error('API URL not configured');
-      }
+      // Use dynamic API URL that auto-detects correct backend address
+      const backendUrl = getApiUrl();
 
       const quantityNum = parseFloat(quantity);
       if (isNaN(quantityNum) || quantityNum <= 0) {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface StrategyMetadata {
   name: string;
@@ -60,10 +61,8 @@ export default function StrategySelector({
   useEffect(() => {
     const fetchStrategies = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        if (!apiUrl) {
-          throw new Error('API URL not configured');
-        }
+        // Use dynamic API URL that auto-detects correct backend address
+        const apiUrl = getApiUrl();
 
         // Try to fetch from backend (if endpoint exists)
         const response = await fetch(`${apiUrl}/api/strategies/available`);
