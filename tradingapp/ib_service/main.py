@@ -524,9 +524,25 @@ def cache_symbols(cache_key: str, data: List[Dict]) -> None:
     logger.info(f"Cached {len(data)} symbols for {cache_key}")
 
 def create_contract(symbol: str, sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD'):
-    """Create IB contract using TWS API"""
+    """Create IB contract using TWS API
+    
+    Special handling for PAXOS cryptocurrency exchange:
+    - PAXOS symbols use format SYMBOL.USD (e.g., BTC.USD, ETH.USD)
+    - If symbol doesn't already have .USD suffix, it will be added for PAXOS
+    """
     contract = Contract()
-    contract.symbol = symbol.upper()
+    
+    # Handle PAXOS cryptocurrency symbols
+    # IBKR requires format: SYMBOL.USD for PAXOS exchange
+    if exchange.upper() == 'PAXOS' and sec_type.upper() == 'CRYPTO':
+        # Add .USD suffix if not already present
+        if not symbol.upper().endswith('.USD'):
+            contract.symbol = f"{symbol.upper()}.USD"
+        else:
+            contract.symbol = symbol.upper()
+    else:
+        contract.symbol = symbol.upper()
+    
     contract.secType = sec_type
     contract.exchange = exchange
     contract.currency = currency

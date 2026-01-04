@@ -79,6 +79,56 @@ export const PRODUCT_TYPES: ProductTypeConfig[] = [
 ];
 
 // =============================================================================
+// PAXOS CRYPTOCURRENCY SYMBOLS
+// Symbol mapping: Display Symbol -> IBKR Symbol (automatically converted)
+// =============================================================================
+
+export interface PaxosSymbol {
+  symbol: string;       // Display symbol (e.g., BTC)
+  ibkrSymbol: string;   // IBKR format (e.g., BTC.USD)
+  name: string;         // Full name
+}
+
+export const PAXOS_SYMBOLS: PaxosSymbol[] = [
+  { symbol: 'AAVE', ibkrSymbol: 'AAVE.USD', name: 'Aave' },
+  { symbol: 'BCH', ibkrSymbol: 'BCH.USD', name: 'Bitcoin Cash' },
+  { symbol: 'BTC', ibkrSymbol: 'BTC.USD', name: 'Bitcoin' },
+  { symbol: 'ETH', ibkrSymbol: 'ETH.USD', name: 'Ethereum' },
+  { symbol: 'LINK', ibkrSymbol: 'LINK.USD', name: 'Chainlink' },
+  { symbol: 'LTC', ibkrSymbol: 'LTC.USD', name: 'Litecoin' },
+  { symbol: 'MATIC', ibkrSymbol: 'MATIC.USD', name: 'Polygon' },
+  { symbol: 'SOL', ibkrSymbol: 'SOL.USD', name: 'Solana' },
+  { symbol: 'UNI', ibkrSymbol: 'UNI.USD', name: 'Uniswap' }
+];
+
+/**
+ * Get the IBKR formatted symbol for PAXOS crypto
+ * @param symbol - The display symbol (e.g., BTC)
+ * @returns The IBKR formatted symbol (e.g., BTC.USD)
+ */
+export function getPaxosIBKRSymbol(symbol: string): string {
+  const upperSymbol = symbol.toUpperCase();
+  // If already in IBKR format, return as-is
+  if (upperSymbol.endsWith('.USD')) {
+    return upperSymbol;
+  }
+  return `${upperSymbol}.USD`;
+}
+
+/**
+ * Get the display symbol from IBKR format for PAXOS crypto
+ * @param ibkrSymbol - The IBKR symbol (e.g., BTC.USD)
+ * @returns The display symbol (e.g., BTC)
+ */
+export function getPaxosDisplaySymbol(ibkrSymbol: string): string {
+  const upperSymbol = ibkrSymbol.toUpperCase();
+  if (upperSymbol.endsWith('.USD')) {
+    return upperSymbol.replace('.USD', '');
+  }
+  return upperSymbol;
+}
+
+// =============================================================================
 // CURRENCIES BY REGION
 // =============================================================================
 
@@ -375,7 +425,7 @@ export const POPULAR_SYMBOLS: Record<string, Record<string, string[]>> = {
     'CASH': ['EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD', 'EUR.GBP', 'EUR.JPY', 'GBP.JPY']
   },
   'PAXOS': {
-    'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'PAXG', 'USDC', 'USDP']
+    'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'SOL', 'LINK', 'AAVE', 'MATIC', 'UNI']
   },
   'ZEROHASH': {
     'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'SOL', 'AVAX', 'LINK', 'MATIC', 'DOT', 'UNI']
