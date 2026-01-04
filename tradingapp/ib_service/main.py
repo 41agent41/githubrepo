@@ -1228,14 +1228,25 @@ async def get_historical_data(
         
         # Request contract details to qualify the contract
         ib.reqContractDetails(1, contract)
-        time.sleep(2)  # Wait for contract details
         
-        logger.info(f"Contract details request completed. Found {len(ib.contracts)} contracts")
+        # Wait for contract details with extended timeout for CRYPTO
+        # CRYPTO contracts on PAXOS may need more time
+        wait_time = 5 if secType.upper() == 'CRYPTO' else 3
+        max_wait = 15 if secType.upper() == 'CRYPTO' else 8
+        total_waited = 0
+        
+        while len(ib.contracts) == 0 and total_waited < max_wait:
+            time.sleep(wait_time)
+            total_waited += wait_time
+            logger.info(f"Waiting for contract details... ({total_waited}/{max_wait}s) - contracts found: {len(ib.contracts)}")
+        
+        logger.info(f"Contract details request completed. Found {len(ib.contracts)} contracts after {total_waited}s")
         
         if not ib.contracts:
+            logger.error(f"No contract found for {symbol} ({secType}) on {exchange}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Symbol {symbol} not found"
+                detail=f"Symbol {symbol} not found on {exchange}. Make sure the symbol and exchange are correct for {secType} contracts."
             )
         
         qualified_contract = ib.contracts[0]
