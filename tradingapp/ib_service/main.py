@@ -527,19 +527,20 @@ def create_contract(symbol: str, sec_type: str = 'STK', exchange: str = 'SMART',
     """Create IB contract using TWS API
     
     Special handling for PAXOS cryptocurrency exchange:
-    - PAXOS symbols use format SYMBOL.USD (e.g., BTC.USD, ETH.USD)
-    - If symbol doesn't already have .USD suffix, it will be added for PAXOS
+    - PAXOS crypto symbols should be just the ticker (e.g., BTC, ETH)
+    - The currency field (USD) defines the quote currency
+    - DO NOT add .USD suffix to the symbol - IB uses the currency field for that
     """
     contract = Contract()
     
     # Handle PAXOS cryptocurrency symbols
-    # IBKR requires format: SYMBOL.USD for PAXOS exchange
+    # IBKR crypto format: symbol=BTC, secType=CRYPTO, exchange=PAXOS, currency=USD
     if exchange.upper() == 'PAXOS' and sec_type.upper() == 'CRYPTO':
-        # Add .USD suffix if not already present
-        if not symbol.upper().endswith('.USD'):
-            contract.symbol = f"{symbol.upper()}.USD"
-        else:
-            contract.symbol = symbol.upper()
+        # Remove .USD suffix if present - IB expects just the crypto ticker
+        clean_symbol = symbol.upper()
+        if clean_symbol.endswith('.USD'):
+            clean_symbol = clean_symbol[:-4]  # Remove '.USD' suffix
+        contract.symbol = clean_symbol
     else:
         contract.symbol = symbol.upper()
     

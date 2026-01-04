@@ -66,3 +66,4 @@ export function useApiUrl(): string {
 // Export a constant for static contexts (will be evaluated at runtime in browser)
 export const API_URL = typeof window !== 'undefined' ? getApiUrl() : (process.env.NEXT_PUBLIC_API_URL || `http://localhost:${BACKEND_PORT}`);
 
+

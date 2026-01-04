@@ -80,50 +80,51 @@ export const PRODUCT_TYPES: ProductTypeConfig[] = [
 
 // =============================================================================
 // PAXOS CRYPTOCURRENCY SYMBOLS
-// Symbol mapping: Display Symbol -> IBKR Symbol (automatically converted)
+// For IBKR: Symbol is just the ticker (BTC), currency field = USD
 // =============================================================================
 
 export interface PaxosSymbol {
-  symbol: string;       // Display symbol (e.g., BTC)
-  ibkrSymbol: string;   // IBKR format (e.g., BTC.USD)
+  symbol: string;       // Crypto ticker (e.g., BTC) - this is what IBKR expects
   name: string;         // Full name
+  currency: string;     // Quote currency (typically USD)
 }
 
 export const PAXOS_SYMBOLS: PaxosSymbol[] = [
-  { symbol: 'AAVE', ibkrSymbol: 'AAVE.USD', name: 'Aave' },
-  { symbol: 'BCH', ibkrSymbol: 'BCH.USD', name: 'Bitcoin Cash' },
-  { symbol: 'BTC', ibkrSymbol: 'BTC.USD', name: 'Bitcoin' },
-  { symbol: 'ETH', ibkrSymbol: 'ETH.USD', name: 'Ethereum' },
-  { symbol: 'LINK', ibkrSymbol: 'LINK.USD', name: 'Chainlink' },
-  { symbol: 'LTC', ibkrSymbol: 'LTC.USD', name: 'Litecoin' },
-  { symbol: 'MATIC', ibkrSymbol: 'MATIC.USD', name: 'Polygon' },
-  { symbol: 'SOL', ibkrSymbol: 'SOL.USD', name: 'Solana' },
-  { symbol: 'UNI', ibkrSymbol: 'UNI.USD', name: 'Uniswap' }
+  { symbol: 'AAVE', name: 'Aave', currency: 'USD' },
+  { symbol: 'BCH', name: 'Bitcoin Cash', currency: 'USD' },
+  { symbol: 'BTC', name: 'Bitcoin', currency: 'USD' },
+  { symbol: 'ETH', name: 'Ethereum', currency: 'USD' },
+  { symbol: 'LINK', name: 'Chainlink', currency: 'USD' },
+  { symbol: 'LTC', name: 'Litecoin', currency: 'USD' },
+  { symbol: 'MATIC', name: 'Polygon', currency: 'USD' },
+  { symbol: 'SOL', name: 'Solana', currency: 'USD' },
+  { symbol: 'UNI', name: 'Uniswap', currency: 'USD' }
 ];
 
 /**
  * Get the IBKR formatted symbol for PAXOS crypto
- * @param symbol - The display symbol (e.g., BTC)
- * @returns The IBKR formatted symbol (e.g., BTC.USD)
+ * IBKR expects just the ticker (BTC), NOT BTC.USD
+ * @param symbol - The symbol (e.g., BTC or BTC.USD)
+ * @returns The clean ticker symbol (e.g., BTC)
  */
 export function getPaxosIBKRSymbol(symbol: string): string {
   const upperSymbol = symbol.toUpperCase();
-  // If already in IBKR format, return as-is
+  // Remove .USD suffix if present - IBKR expects just the ticker
   if (upperSymbol.endsWith('.USD')) {
-    return upperSymbol;
+    return upperSymbol.slice(0, -4);
   }
-  return `${upperSymbol}.USD`;
+  return upperSymbol;
 }
 
 /**
- * Get the display symbol from IBKR format for PAXOS crypto
- * @param ibkrSymbol - The IBKR symbol (e.g., BTC.USD)
- * @returns The display symbol (e.g., BTC)
+ * Get the display symbol for PAXOS crypto (same as IBKR symbol now)
+ * @param symbol - The symbol (e.g., BTC or BTC.USD)
+ * @returns The clean ticker symbol (e.g., BTC)
  */
-export function getPaxosDisplaySymbol(ibkrSymbol: string): string {
-  const upperSymbol = ibkrSymbol.toUpperCase();
+export function getPaxosDisplaySymbol(symbol: string): string {
+  const upperSymbol = symbol.toUpperCase();
   if (upperSymbol.endsWith('.USD')) {
-    return upperSymbol.replace('.USD', '');
+    return upperSymbol.slice(0, -4);
   }
   return upperSymbol;
 }
