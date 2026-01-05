@@ -212,10 +212,22 @@ class IBApp(EWrapper, EClient):
         self.managed_accounts = []
         self.next_order_id = None
         self.connection_ready = threading.Event()
+        self.last_error = None  # Store last error for debugging
+        self.last_error_code = None
         
-    def error(self, reqId, errorCode, errorString):
+    def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=""):
         """Handle TWS API errors"""
-        logger.error(f"TWS API Error {errorCode}: {errorString} (reqId: {reqId})")
+        # Store error for later retrieval
+        self.last_error = errorString
+        self.last_error_code = errorCode
+        
+        # Error codes 2104, 2106, 2158 are informational (market data farm connected)
+        # Error code 10285 is API version warning (informational)
+        info_codes = [2104, 2106, 2158, 10285]
+        if errorCode in info_codes:
+            logger.info(f"TWS API Info {errorCode}: {errorString} (reqId: {reqId})")
+        else:
+            logger.error(f"TWS API Error {errorCode}: {errorString} (reqId: {reqId})")
         
     def connectAck(self):
         """Called when connection is acknowledged"""
@@ -1295,51 +1307,80 @@ async def get_historical_data(
         format_date = 1  # Force string format for compatibility
         
         # Determine whatToShow based on security type
-        # CRYPTO contracts on PAXOS: try MIDPOINT (more reliable than AGGTRADES)
-        # Valid options for crypto: MIDPOINT, BID, ASK, BID_ASK, TRADES
+        # CRYPTO contracts on PAXOS: try TRADES first (most common), fallback to others
+        # Valid options for crypto: TRADES, MIDPOINT, BID, ASK, BID_ASK
         if secType.upper() == 'CRYPTO':
-            what_to_show = 'MIDPOINT'  # MIDPOINT is most reliable for crypto historical data
+            # Try multiple data types for crypto
+            crypto_data_types = ['TRADES', 'MIDPOINT', 'BID_ASK']
+            what_to_show = 'TRADES'  # Start with TRADES
             use_rth = 0  # CRYPTO trades 24/7, no regular trading hours
-            logger.info(f"Using MIDPOINT for CRYPTO contract (24/7 trading)")
+            logger.info(f"Using {what_to_show} for CRYPTO contract (24/7 trading)")
         else:
+            crypto_data_types = None
             what_to_show = 'TRADES'
             use_rth = 1  # Use regular trading hours for stocks
         
-        ib.reqHistoricalData(
-            2,  # reqId
-            qualified_contract,
-            end_date_str,  # endDateTime (empty string for "now", or specific date)
-            ib_duration,  # duration
-            ib_timeframe,
-            what_to_show,
-            use_rth,  # useRTH: 0 for CRYPTO (24/7), 1 for stocks
-            format_date,  # formatDate: 1 for string format (more reliable)
-            False,  # keepUpToDate
-            []  # chartOptions
-        )
+        # For CRYPTO, try multiple data types if first one fails
+        data_types_to_try = crypto_data_types if crypto_data_types else [what_to_show]
         
-        logger.info(f"Requested historical data with formatDate={format_date} (string format for compatibility)")
+        for data_type_attempt in data_types_to_try:
+            # Clear previous data and errors
+            ib.historical_data = []
+            ib.last_error = None
+            ib.last_error_code = None
+            
+            logger.info(f"Attempting historical data request with whatToShow={data_type_attempt}")
+            
+            ib.reqHistoricalData(
+                2,  # reqId
+                qualified_contract,
+                end_date_str,  # endDateTime (empty string for "now", or specific date)
+                ib_duration,  # duration
+                ib_timeframe,
+                data_type_attempt,
+                use_rth,  # useRTH: 0 for CRYPTO (24/7), 1 for stocks
+                format_date,  # formatDate: 1 for string format (more reliable)
+                False,  # keepUpToDate
+                []  # chartOptions
+            )
+            
+            logger.info(f"Requested historical data: {symbol} {data_type_attempt} {ib_duration} {ib_timeframe}")
+            
+            # Wait for data with timeout
+            max_wait_time = 20  # seconds (increased for crypto)
+            wait_interval = 2  # seconds
+            total_wait_time = 0
+            
+            while len(ib.historical_data) == 0 and total_wait_time < max_wait_time:
+                time.sleep(wait_interval)
+                total_wait_time += wait_interval
+                logger.info(f"Waiting for historical data... ({total_wait_time}/{max_wait_time}s) - bars: {len(ib.historical_data)}, last_error: {ib.last_error_code}")
+            
+            if ib.historical_data:
+                logger.info(f"SUCCESS: Received {len(ib.historical_data)} bars with {data_type_attempt} after {total_wait_time}s")
+                what_to_show = data_type_attempt  # Record which type worked
+                break
+            else:
+                logger.warning(f"No data with {data_type_attempt} after {total_wait_time}s, error: {ib.last_error}")
+                if data_type_attempt != data_types_to_try[-1]:
+                    logger.info(f"Trying next data type...")
+                    time.sleep(1)  # Small delay before next attempt
         
-        # Wait for data with longer timeout and retry logic
-        max_wait_time = 15  # seconds
-        wait_interval = 1  # seconds
-        total_wait_time = 0
-        
-        while len(ib.historical_data) == 0 and total_wait_time < max_wait_time:
-            time.sleep(wait_interval)
-            total_wait_time += wait_interval
-            logger.info(f"Waiting for historical data... ({total_wait_time}/{max_wait_time}s) - bars received: {len(ib.historical_data)}")
-        
-        logger.info(f"Historical data request completed. Received {len(ib.historical_data)} bars after {total_wait_time}s")
+        logger.info(f"Historical data request completed. Received {len(ib.historical_data)} bars")
         if len(ib.historical_data) > 0:
             logger.info(f"Sample bar: {ib.historical_data[0]}")
         else:
-            logger.warning("No historical data received from IB Gateway")
+            logger.error(f"No historical data received from IB Gateway after trying: {data_types_to_try}")
+            logger.error(f"Last error code: {ib.last_error_code}, Last error: {ib.last_error}")
         
         if not ib.historical_data:
+            error_detail = f"No historical data available for {symbol} ({secType}) on {exchange}."
+            if ib.last_error:
+                error_detail += f" IB Error: {ib.last_error}"
+            error_detail += " Note: IBKR may not provide historical data for all crypto assets via API."
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No historical data available for {symbol} after {total_wait_time}s timeout"
+                detail=error_detail
             )
         
         # Process and return data with indicators
