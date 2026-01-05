@@ -214,6 +214,7 @@ class IBApp(EWrapper, EClient):
         self.connection_ready = threading.Event()
         self.last_error = None  # Store last error for debugging
         self.last_error_code = None
+        self.realtime_bars = {}  # Store real-time 5-second bars by reqId
         
     def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=""):
         """Handle TWS API errors"""
@@ -315,6 +316,26 @@ class IBApp(EWrapper, EClient):
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
         """Called when order status is updated"""
         logger.debug(f"Order status: {orderId} - {status}")
+    
+    def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, count):
+        """Called when real-time bar is received (5-second bars)"""
+        if not hasattr(self, 'realtime_bars'):
+            self.realtime_bars = {}
+        if reqId not in self.realtime_bars:
+            self.realtime_bars[reqId] = []
+        
+        bar_data = {
+            'timestamp': time,
+            'open': open_,
+            'high': high,
+            'low': low,
+            'close': close,
+            'volume': volume,
+            'wap': wap,
+            'count': count
+        }
+        self.realtime_bars[reqId].append(bar_data)
+        logger.debug(f"Real-time bar for reqId {reqId}: {bar_data}")
 
 def get_ib_connection():
     """Get or create IB connection with intelligent client ID retry"""
@@ -1374,10 +1395,17 @@ async def get_historical_data(
             logger.error(f"Last error code: {ib.last_error_code}, Last error: {ib.last_error}")
         
         if not ib.historical_data:
-            error_detail = f"No historical data available for {symbol} ({secType}) on {exchange}."
-            if ib.last_error:
-                error_detail += f" IB Error: {ib.last_error}"
-            error_detail += " Note: IBKR may not provide historical data for all crypto assets via API."
+            # Special handling for CRYPTO - suggest streaming endpoint
+            if secType.upper() == 'CRYPTO':
+                error_detail = (
+                    f"Historical data is not available for {symbol} ({secType}) on {exchange} via IBKR API. "
+                    f"IBKR does not provide historical data for cryptocurrency through the API. "
+                    f"Use the streaming endpoint /market-data/crypto/stream?symbol={symbol} to collect real-time data instead."
+                )
+            else:
+                error_detail = f"No historical data available for {symbol} ({secType}) on {exchange}."
+                if ib.last_error:
+                    error_detail += f" IB Error: {ib.last_error}"
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=error_detail
@@ -1843,6 +1871,237 @@ async def get_realtime_data(symbol: str, account_mode: str = "paper"):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_message
+        )
+
+# =============================================================================
+# PAXOS CRYPTO STREAMING ENDPOINT
+# Real-time streaming data for cryptocurrency (24/7 market)
+# Uses reqRealTimeBars for 5-second OHLC bars
+# =============================================================================
+
+class CryptoStreamResponse(BaseModel):
+    symbol: str
+    exchange: str = "PAXOS"
+    secType: str = "CRYPTO"
+    bars: list
+    bar_count: int
+    collection_time_seconds: int
+    timestamp: str
+    status: str
+
+@app.get("/market-data/crypto/stream")
+async def get_crypto_stream(
+    symbol: str,
+    duration_seconds: int = 60,
+    account_mode: str = "paper"
+):
+    """
+    Stream real-time crypto data from PAXOS exchange.
+    
+    Since IBKR doesn't provide historical data for crypto via API,
+    this endpoint collects real-time 5-second bars for the specified duration.
+    
+    Args:
+        symbol: Crypto symbol (e.g., BTC, ETH)
+        duration_seconds: How long to collect data (default 60 seconds, max 300)
+        account_mode: 'paper' or 'live'
+    
+    Returns:
+        Collection of 5-second OHLC bars
+    """
+    try:
+        # Limit duration to prevent long requests
+        duration_seconds = min(duration_seconds, 300)  # Max 5 minutes
+        
+        logger.info(f"Starting crypto stream for {symbol} on PAXOS for {duration_seconds}s")
+        
+        # Get connection
+        ib = get_ib_connection()
+        
+        if not verify_connection_health(ib):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="IB Gateway connection is not available"
+            )
+        
+        # Set market data type
+        if account_mode.lower() == 'live':
+            ib.reqMarketDataType(1)
+        else:
+            ib.reqMarketDataType(3)
+        
+        time.sleep(0.5)
+        
+        # Create PAXOS crypto contract
+        contract = create_contract(symbol.upper(), 'CRYPTO', 'PAXOS', 'USD')
+        logger.info(f"Created PAXOS crypto contract: {contract.symbol}")
+        
+        # Qualify the contract
+        ib.contracts = []
+        ib.reqContractDetails(20, contract)
+        
+        # Wait for contract details
+        wait_time = 0
+        max_wait = 10
+        while len(ib.contracts) == 0 and wait_time < max_wait:
+            time.sleep(1)
+            wait_time += 1
+        
+        if not ib.contracts:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Crypto symbol {symbol} not found on PAXOS"
+            )
+        
+        qualified_contract = ib.contracts[0]
+        logger.info(f"Qualified contract: {qualified_contract.symbol} (conId: {qualified_contract.conId})")
+        
+        # Clear previous real-time bars
+        req_id = 21  # Unique reqId for crypto streaming
+        ib.realtime_bars[req_id] = []
+        
+        # Request real-time 5-second bars
+        # whatToShow options: TRADES, MIDPOINT, BID, ASK
+        logger.info(f"Requesting real-time bars for {symbol}")
+        ib.reqRealTimeBars(
+            req_id,
+            qualified_contract,
+            5,  # bar size in seconds (only 5 is supported by IB)
+            "MIDPOINT",  # whatToShow - MIDPOINT works well for crypto
+            False,  # useRTH - False for 24/7 crypto
+            []  # realTimeBarsOptions
+        )
+        
+        # Collect bars for the specified duration
+        logger.info(f"Collecting real-time bars for {duration_seconds} seconds...")
+        start_time = time.time()
+        
+        while (time.time() - start_time) < duration_seconds:
+            time.sleep(1)
+            bar_count = len(ib.realtime_bars.get(req_id, []))
+            elapsed = int(time.time() - start_time)
+            if elapsed % 10 == 0:  # Log every 10 seconds
+                logger.info(f"Collected {bar_count} bars after {elapsed}s")
+        
+        # Cancel the real-time bar subscription
+        ib.cancelRealTimeBars(req_id)
+        logger.info("Cancelled real-time bar subscription")
+        
+        # Get collected bars
+        bars = ib.realtime_bars.get(req_id, [])
+        logger.info(f"Total collected: {len(bars)} bars")
+        
+        if not bars:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No real-time data received for {symbol}. The market may be closed or there's a subscription issue."
+            )
+        
+        return CryptoStreamResponse(
+            symbol=symbol.upper(),
+            exchange="PAXOS",
+            secType="CRYPTO",
+            bars=bars,
+            bar_count=len(bars),
+            collection_time_seconds=duration_seconds,
+            timestamp=datetime.now().isoformat(),
+            status="success"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in crypto stream: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stream crypto data: {str(e)}"
+        )
+
+
+@app.get("/market-data/crypto/quote")
+async def get_crypto_quote(
+    symbol: str,
+    account_mode: str = "paper"
+):
+    """
+    Get current real-time quote for PAXOS crypto.
+    
+    Returns bid, ask, last price for the cryptocurrency.
+    """
+    try:
+        logger.info(f"Getting crypto quote for {symbol} on PAXOS")
+        
+        # Get connection
+        ib = get_ib_connection()
+        
+        if not verify_connection_health(ib):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="IB Gateway connection is not available"
+            )
+        
+        # Set market data type
+        if account_mode.lower() == 'live':
+            ib.reqMarketDataType(1)
+        else:
+            ib.reqMarketDataType(3)
+        
+        time.sleep(0.5)
+        
+        # Create PAXOS crypto contract
+        contract = create_contract(symbol.upper(), 'CRYPTO', 'PAXOS', 'USD')
+        
+        # Qualify the contract
+        ib.contracts = []
+        ib.reqContractDetails(22, contract)
+        
+        wait_time = 0
+        while len(ib.contracts) == 0 and wait_time < 10:
+            time.sleep(1)
+            wait_time += 1
+        
+        if not ib.contracts:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Crypto symbol {symbol} not found on PAXOS"
+            )
+        
+        qualified_contract = ib.contracts[0]
+        
+        # Request market data
+        req_id = 23
+        ib.data[req_id] = {}
+        ib.reqMktData(req_id, qualified_contract, '', False, False, [])
+        
+        # Wait for data
+        time.sleep(3)
+        
+        # Get tick data
+        tick_data = ib.data.get(req_id, {})
+        
+        # Cancel subscription
+        ib.cancelMktData(req_id)
+        
+        # Extract prices
+        price = tick_data.get('price')
+        
+        return {
+            "symbol": symbol.upper(),
+            "exchange": "PAXOS",
+            "secType": "CRYPTO",
+            "currency": "USD",
+            "price": float(price) if price and not math.isnan(float(price)) else None,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success" if price else "no_data"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting crypto quote: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get crypto quote: {str(e)}"
         )
 
 # Contract search endpoint
