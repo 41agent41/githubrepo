@@ -1295,11 +1295,12 @@ async def get_historical_data(
         format_date = 1  # Force string format for compatibility
         
         # Determine whatToShow based on security type
-        # CRYPTO contracts require AGGTRADES instead of TRADES
+        # CRYPTO contracts on PAXOS: try MIDPOINT (more reliable than AGGTRADES)
+        # Valid options for crypto: MIDPOINT, BID, ASK, BID_ASK, TRADES
         if secType.upper() == 'CRYPTO':
-            what_to_show = 'AGGTRADES'
+            what_to_show = 'MIDPOINT'  # MIDPOINT is most reliable for crypto historical data
             use_rth = 0  # CRYPTO trades 24/7, no regular trading hours
-            logger.info(f"Using AGGTRADES for CRYPTO contract (24/7 trading)")
+            logger.info(f"Using MIDPOINT for CRYPTO contract (24/7 trading)")
         else:
             what_to_show = 'TRADES'
             use_rth = 1  # Use regular trading hours for stocks
