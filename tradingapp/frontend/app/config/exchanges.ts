@@ -428,9 +428,9 @@ export const US_EXCHANGES: Exchange[] = [
   { value: 'ICEUS', label: 'ICEUS', description: 'Ice Futures US Inc', products: ['FUT'] },
   { value: 'SMFE', label: 'SMFE', description: 'The Small Exchange', products: ['FUT', 'FOP'] },
   
-  // Forex
-  { value: 'IDEALPRO', label: 'IDEALPRO', description: 'Interactive Brokers Dealing System Pro', products: ['CASH'] },
-  { value: 'IBFX', label: 'IBFX', description: 'Interactive Brokers Dealing System Pro', products: ['CASH'] },
+  // Forex - IDEALPRO is the primary forex exchange (IBFX is an alias that may not work)
+  { value: 'IDEALPRO', label: 'IDEALPRO (Forex)', description: 'Interactive Brokers Forex Exchange - Primary', products: ['CASH'] },
+  { value: 'IBFX', label: 'IBFX (Forex)', description: 'Interactive Brokers Forex Exchange - Routes to IDEALPRO', products: ['CASH'] },
   
   // Other Specialty Exchanges
   { value: 'FUNDSERV', label: 'FUNDSERV', description: 'Mutual Fund Holding Venue', products: ['FUND'] },

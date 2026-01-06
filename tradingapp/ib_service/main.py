@@ -574,10 +574,19 @@ def create_contract(symbol: str, sec_type: str = 'STK', exchange: str = 'SMART',
     """
     contract = Contract()
     
-    # Handle FOREX (CASH) symbols on IDEALPRO or IBFX
+    # Handle FOREX (CASH) symbols
+    # IMPORTANT: Always use IDEALPRO for forex - IBFX alias doesn't work reliably
     # Forex symbol format: EUR.USD -> symbol=EUR, currency=USD
-    if sec_type.upper() == 'CASH' and exchange.upper() in ['IDEALPRO', 'IBFX']:
+    if sec_type.upper() == 'CASH':
         clean_symbol = symbol.upper()
+        
+        # Always use IDEALPRO for forex (IBFX returns "No security definition found")
+        forex_exchange = 'IDEALPRO'
+        if exchange.upper() not in ['IDEALPRO', 'IBFX']:
+            forex_exchange = exchange  # Allow other exchanges if explicitly specified
+        else:
+            forex_exchange = 'IDEALPRO'  # Force IDEALPRO for IBFX requests
+            
         if '.' in clean_symbol:
             # Split the forex pair: EUR.USD -> base=EUR, quote=USD
             parts = clean_symbol.split('.')
@@ -585,13 +594,14 @@ def create_contract(symbol: str, sec_type: str = 'STK', exchange: str = 'SMART',
             quote_currency = parts[1] if len(parts) > 1 else currency
             contract.symbol = base_currency
             contract.currency = quote_currency
-            logger.info(f"Creating FOREX contract: {base_currency}/{quote_currency} on {exchange}")
+            logger.info(f"Creating FOREX contract: {base_currency}/{quote_currency} on {forex_exchange} (requested: {exchange})")
         else:
             # If no dot, assume it's just the base currency and use provided currency
             contract.symbol = clean_symbol
             contract.currency = currency
+            logger.info(f"Creating FOREX contract: {clean_symbol}/{currency} on {forex_exchange}")
         contract.secType = 'CASH'
-        contract.exchange = exchange
+        contract.exchange = forex_exchange
         return contract
     
     # Handle PAXOS cryptocurrency symbols
