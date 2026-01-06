@@ -67,3 +67,4 @@ export function useApiUrl(): string {
 export const API_URL = typeof window !== 'undefined' ? getApiUrl() : (process.env.NEXT_PUBLIC_API_URL || `http://localhost:${BACKEND_PORT}`);
 
 
+
