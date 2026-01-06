@@ -101,6 +101,186 @@ export const PAXOS_SYMBOLS: PaxosSymbol[] = [
   { symbol: 'UNI', name: 'Uniswap', currency: 'USD' }
 ];
 
+// =============================================================================
+// IBFX FOREX SYMBOLS
+// For IBKR: Symbol format is BASE.QUOTE (e.g., EUR.USD)
+// secType = CASH, exchange = IDEALPRO or IBFX
+// =============================================================================
+
+export interface ForexSymbol {
+  symbol: string;       // Full pair symbol (e.g., EUR.USD)
+  baseCurrency: string; // Base currency (e.g., EUR) - this is sent as 'symbol' to IB
+  quoteCurrency: string; // Quote currency (e.g., USD) - this is sent as 'currency' to IB
+  description: string;   // Full description
+}
+
+export const IBFX_SYMBOLS: ForexSymbol[] = [
+  // Major Pairs
+  { symbol: 'EUR.USD', baseCurrency: 'EUR', quoteCurrency: 'USD', description: 'Euro / US Dollar' },
+  { symbol: 'GBP.USD', baseCurrency: 'GBP', quoteCurrency: 'USD', description: 'British Pound / US Dollar' },
+  { symbol: 'USD.JPY', baseCurrency: 'USD', quoteCurrency: 'JPY', description: 'US Dollar / Japanese Yen' },
+  { symbol: 'USD.CHF', baseCurrency: 'USD', quoteCurrency: 'CHF', description: 'US Dollar / Swiss Franc' },
+  { symbol: 'AUD.USD', baseCurrency: 'AUD', quoteCurrency: 'USD', description: 'Australian Dollar / US Dollar' },
+  { symbol: 'NZD.USD', baseCurrency: 'NZD', quoteCurrency: 'USD', description: 'New Zealand Dollar / US Dollar' },
+  { symbol: 'USD.CAD', baseCurrency: 'USD', quoteCurrency: 'CAD', description: 'US Dollar / Canadian Dollar' },
+  
+  // EUR Crosses
+  { symbol: 'EUR.GBP', baseCurrency: 'EUR', quoteCurrency: 'GBP', description: 'Euro / British Pound' },
+  { symbol: 'EUR.JPY', baseCurrency: 'EUR', quoteCurrency: 'JPY', description: 'Euro / Japanese Yen' },
+  { symbol: 'EUR.CHF', baseCurrency: 'EUR', quoteCurrency: 'CHF', description: 'Euro / Swiss Franc' },
+  { symbol: 'EUR.AUD', baseCurrency: 'EUR', quoteCurrency: 'AUD', description: 'Euro / Australian Dollar' },
+  { symbol: 'EUR.CAD', baseCurrency: 'EUR', quoteCurrency: 'CAD', description: 'Euro / Canadian Dollar' },
+  { symbol: 'EUR.NZD', baseCurrency: 'EUR', quoteCurrency: 'NZD', description: 'Euro / New Zealand Dollar' },
+  { symbol: 'EUR.SEK', baseCurrency: 'EUR', quoteCurrency: 'SEK', description: 'Euro / Swedish Krona' },
+  { symbol: 'EUR.NOK', baseCurrency: 'EUR', quoteCurrency: 'NOK', description: 'Euro / Norwegian Krone' },
+  { symbol: 'EUR.DKK', baseCurrency: 'EUR', quoteCurrency: 'DKK', description: 'Euro / Danish Krone' },
+  { symbol: 'EUR.HKD', baseCurrency: 'EUR', quoteCurrency: 'HKD', description: 'Euro / Hong Kong Dollar' },
+  { symbol: 'EUR.SGD', baseCurrency: 'EUR', quoteCurrency: 'SGD', description: 'Euro / Singapore Dollar' },
+  { symbol: 'EUR.TRY', baseCurrency: 'EUR', quoteCurrency: 'TRY', description: 'Euro / Turkish Lira' },
+  { symbol: 'EUR.ZAR', baseCurrency: 'EUR', quoteCurrency: 'ZAR', description: 'Euro / South African Rand' },
+  { symbol: 'EUR.MXN', baseCurrency: 'EUR', quoteCurrency: 'MXN', description: 'Euro / Mexican Peso' },
+  { symbol: 'EUR.PLN', baseCurrency: 'EUR', quoteCurrency: 'PLN', description: 'Euro / Polish Zloty' },
+  { symbol: 'EUR.HUF', baseCurrency: 'EUR', quoteCurrency: 'HUF', description: 'Euro / Hungarian Forint' },
+  { symbol: 'EUR.CZK', baseCurrency: 'EUR', quoteCurrency: 'CZK', description: 'Euro / Czech Koruna' },
+  { symbol: 'EUR.ILS', baseCurrency: 'EUR', quoteCurrency: 'ILS', description: 'Euro / Israeli Shekel' },
+  { symbol: 'EUR.CNH', baseCurrency: 'EUR', quoteCurrency: 'CNH', description: 'Euro / Chinese Renminbi Offshore' },
+  { symbol: 'EUR.RUB', baseCurrency: 'EUR', quoteCurrency: 'RUB', description: 'Euro / Russian Ruble' },
+  
+  // GBP Crosses
+  { symbol: 'GBP.JPY', baseCurrency: 'GBP', quoteCurrency: 'JPY', description: 'British Pound / Japanese Yen' },
+  { symbol: 'GBP.CHF', baseCurrency: 'GBP', quoteCurrency: 'CHF', description: 'British Pound / Swiss Franc' },
+  { symbol: 'GBP.AUD', baseCurrency: 'GBP', quoteCurrency: 'AUD', description: 'British Pound / Australian Dollar' },
+  { symbol: 'GBP.CAD', baseCurrency: 'GBP', quoteCurrency: 'CAD', description: 'British Pound / Canadian Dollar' },
+  { symbol: 'GBP.NZD', baseCurrency: 'GBP', quoteCurrency: 'NZD', description: 'British Pound / New Zealand Dollar' },
+  { symbol: 'GBP.SEK', baseCurrency: 'GBP', quoteCurrency: 'SEK', description: 'British Pound / Swedish Krona' },
+  { symbol: 'GBP.NOK', baseCurrency: 'GBP', quoteCurrency: 'NOK', description: 'British Pound / Norwegian Krone' },
+  { symbol: 'GBP.DKK', baseCurrency: 'GBP', quoteCurrency: 'DKK', description: 'British Pound / Danish Krone' },
+  { symbol: 'GBP.HKD', baseCurrency: 'GBP', quoteCurrency: 'HKD', description: 'British Pound / Hong Kong Dollar' },
+  { symbol: 'GBP.SGD', baseCurrency: 'GBP', quoteCurrency: 'SGD', description: 'British Pound / Singapore Dollar' },
+  { symbol: 'GBP.TRY', baseCurrency: 'GBP', quoteCurrency: 'TRY', description: 'British Pound / Turkish Lira' },
+  { symbol: 'GBP.ZAR', baseCurrency: 'GBP', quoteCurrency: 'ZAR', description: 'British Pound / South African Rand' },
+  { symbol: 'GBP.MXN', baseCurrency: 'GBP', quoteCurrency: 'MXN', description: 'British Pound / Mexican Peso' },
+  { symbol: 'GBP.PLN', baseCurrency: 'GBP', quoteCurrency: 'PLN', description: 'British Pound / Polish Zloty' },
+  { symbol: 'GBP.HUF', baseCurrency: 'GBP', quoteCurrency: 'HUF', description: 'British Pound / Hungarian Forint' },
+  { symbol: 'GBP.CZK', baseCurrency: 'GBP', quoteCurrency: 'CZK', description: 'British Pound / Czech Koruna' },
+  { symbol: 'GBP.CNH', baseCurrency: 'GBP', quoteCurrency: 'CNH', description: 'British Pound / Chinese Renminbi Offshore' },
+  
+  // AUD Crosses
+  { symbol: 'AUD.JPY', baseCurrency: 'AUD', quoteCurrency: 'JPY', description: 'Australian Dollar / Japanese Yen' },
+  { symbol: 'AUD.CHF', baseCurrency: 'AUD', quoteCurrency: 'CHF', description: 'Australian Dollar / Swiss Franc' },
+  { symbol: 'AUD.CAD', baseCurrency: 'AUD', quoteCurrency: 'CAD', description: 'Australian Dollar / Canadian Dollar' },
+  { symbol: 'AUD.NZD', baseCurrency: 'AUD', quoteCurrency: 'NZD', description: 'Australian Dollar / New Zealand Dollar' },
+  { symbol: 'AUD.SGD', baseCurrency: 'AUD', quoteCurrency: 'SGD', description: 'Australian Dollar / Singapore Dollar' },
+  { symbol: 'AUD.HKD', baseCurrency: 'AUD', quoteCurrency: 'HKD', description: 'Australian Dollar / Hong Kong Dollar' },
+  { symbol: 'AUD.ZAR', baseCurrency: 'AUD', quoteCurrency: 'ZAR', description: 'Australian Dollar / South African Rand' },
+  { symbol: 'AUD.CNH', baseCurrency: 'AUD', quoteCurrency: 'CNH', description: 'Australian Dollar / Chinese Renminbi Offshore' },
+  
+  // NZD Crosses
+  { symbol: 'NZD.JPY', baseCurrency: 'NZD', quoteCurrency: 'JPY', description: 'New Zealand Dollar / Japanese Yen' },
+  { symbol: 'NZD.CHF', baseCurrency: 'NZD', quoteCurrency: 'CHF', description: 'New Zealand Dollar / Swiss Franc' },
+  { symbol: 'NZD.CAD', baseCurrency: 'NZD', quoteCurrency: 'CAD', description: 'New Zealand Dollar / Canadian Dollar' },
+  
+  // CAD Crosses
+  { symbol: 'CAD.JPY', baseCurrency: 'CAD', quoteCurrency: 'JPY', description: 'Canadian Dollar / Japanese Yen' },
+  { symbol: 'CAD.CHF', baseCurrency: 'CAD', quoteCurrency: 'CHF', description: 'Canadian Dollar / Swiss Franc' },
+  { symbol: 'CAD.HKD', baseCurrency: 'CAD', quoteCurrency: 'HKD', description: 'Canadian Dollar / Hong Kong Dollar' },
+  { symbol: 'CAD.CNH', baseCurrency: 'CAD', quoteCurrency: 'CNH', description: 'Canadian Dollar / Chinese Renminbi Offshore' },
+  
+  // CHF Crosses
+  { symbol: 'CHF.JPY', baseCurrency: 'CHF', quoteCurrency: 'JPY', description: 'Swiss Franc / Japanese Yen' },
+  { symbol: 'CHF.SEK', baseCurrency: 'CHF', quoteCurrency: 'SEK', description: 'Swiss Franc / Swedish Krona' },
+  { symbol: 'CHF.NOK', baseCurrency: 'CHF', quoteCurrency: 'NOK', description: 'Swiss Franc / Norwegian Krone' },
+  { symbol: 'CHF.DKK', baseCurrency: 'CHF', quoteCurrency: 'DKK', description: 'Swiss Franc / Danish Krone' },
+  { symbol: 'CHF.TRY', baseCurrency: 'CHF', quoteCurrency: 'TRY', description: 'Swiss Franc / Turkish Lira' },
+  { symbol: 'CHF.PLN', baseCurrency: 'CHF', quoteCurrency: 'PLN', description: 'Swiss Franc / Polish Zloty' },
+  { symbol: 'CHF.HUF', baseCurrency: 'CHF', quoteCurrency: 'HUF', description: 'Swiss Franc / Hungarian Forint' },
+  { symbol: 'CHF.CZK', baseCurrency: 'CHF', quoteCurrency: 'CZK', description: 'Swiss Franc / Czech Koruna' },
+  { symbol: 'CHF.ZAR', baseCurrency: 'CHF', quoteCurrency: 'ZAR', description: 'Swiss Franc / South African Rand' },
+  { symbol: 'CHF.CNH', baseCurrency: 'CHF', quoteCurrency: 'CNH', description: 'Swiss Franc / Chinese Renminbi Offshore' },
+  
+  // USD Crosses
+  { symbol: 'USD.TRY', baseCurrency: 'USD', quoteCurrency: 'TRY', description: 'US Dollar / Turkish Lira' },
+  { symbol: 'USD.ZAR', baseCurrency: 'USD', quoteCurrency: 'ZAR', description: 'US Dollar / South African Rand' },
+  { symbol: 'USD.CNH', baseCurrency: 'USD', quoteCurrency: 'CNH', description: 'US Dollar / Chinese Renminbi Offshore' },
+  { symbol: 'USD.ILS', baseCurrency: 'USD', quoteCurrency: 'ILS', description: 'US Dollar / Israeli Shekel' },
+  { symbol: 'USD.BGN', baseCurrency: 'USD', quoteCurrency: 'BGN', description: 'US Dollar / Bulgarian Lev' },
+  
+  // Scandinavian Crosses
+  { symbol: 'NOK.SEK', baseCurrency: 'NOK', quoteCurrency: 'SEK', description: 'Norwegian Krone / Swedish Krona' },
+  { symbol: 'NOK.JPY', baseCurrency: 'NOK', quoteCurrency: 'JPY', description: 'Norwegian Krone / Japanese Yen' },
+  { symbol: 'SEK.JPY', baseCurrency: 'SEK', quoteCurrency: 'JPY', description: 'Swedish Krona / Japanese Yen' },
+  { symbol: 'DKK.SEK', baseCurrency: 'DKK', quoteCurrency: 'SEK', description: 'Danish Krone / Swedish Krona' },
+  { symbol: 'DKK.NOK', baseCurrency: 'DKK', quoteCurrency: 'NOK', description: 'Danish Krone / Norwegian Krone' },
+  { symbol: 'DKK.JPY', baseCurrency: 'DKK', quoteCurrency: 'JPY', description: 'Danish Krone / Japanese Yen' },
+  
+  // Asian Crosses
+  { symbol: 'SGD.JPY', baseCurrency: 'SGD', quoteCurrency: 'JPY', description: 'Singapore Dollar / Japanese Yen' },
+  { symbol: 'SGD.HKD', baseCurrency: 'SGD', quoteCurrency: 'HKD', description: 'Singapore Dollar / Hong Kong Dollar' },
+  { symbol: 'SGD.CNH', baseCurrency: 'SGD', quoteCurrency: 'CNH', description: 'Singapore Dollar / Chinese Renminbi Offshore' },
+  { symbol: 'HKD.JPY', baseCurrency: 'HKD', quoteCurrency: 'JPY', description: 'Hong Kong Dollar / Japanese Yen' },
+  { symbol: 'CNH.JPY', baseCurrency: 'CNH', quoteCurrency: 'JPY', description: 'Chinese Renminbi Offshore / Japanese Yen' },
+  { symbol: 'CNH.HKD', baseCurrency: 'CNH', quoteCurrency: 'HKD', description: 'Chinese Renminbi Offshore / Hong Kong Dollar' },
+  
+  // Korean Won Crosses
+  { symbol: 'KRW.USD', baseCurrency: 'KRW', quoteCurrency: 'USD', description: 'Korean Won / US Dollar' },
+  { symbol: 'KRW.JPY', baseCurrency: 'KRW', quoteCurrency: 'JPY', description: 'Korean Won / Japanese Yen' },
+  { symbol: 'KRW.HKD', baseCurrency: 'KRW', quoteCurrency: 'HKD', description: 'Korean Won / Hong Kong Dollar' },
+  { symbol: 'KRW.GBP', baseCurrency: 'KRW', quoteCurrency: 'GBP', description: 'Korean Won / British Pound' },
+  { symbol: 'KRW.EUR', baseCurrency: 'KRW', quoteCurrency: 'EUR', description: 'Korean Won / Euro' },
+  { symbol: 'KRW.CHF', baseCurrency: 'KRW', quoteCurrency: 'CHF', description: 'Korean Won / Swiss Franc' },
+  { symbol: 'KRW.CAD', baseCurrency: 'KRW', quoteCurrency: 'CAD', description: 'Korean Won / Canadian Dollar' },
+  { symbol: 'KRW.AUD', baseCurrency: 'KRW', quoteCurrency: 'AUD', description: 'Korean Won / Australian Dollar' },
+  
+  // MXN Crosses
+  { symbol: 'MXN.JPY', baseCurrency: 'MXN', quoteCurrency: 'JPY', description: 'Mexican Peso / Japanese Yen' },
+  
+  // Middle East Crosses
+  { symbol: 'EUR.OMR', baseCurrency: 'EUR', quoteCurrency: 'OMR', description: 'Euro / Omani Rial' },
+  { symbol: 'EUR.KWD', baseCurrency: 'EUR', quoteCurrency: 'KWD', description: 'Euro / Kuwaiti Dinar' },
+  { symbol: 'EUR.BHD', baseCurrency: 'EUR', quoteCurrency: 'BHD', description: 'Euro / Bahraini Dinar' },
+  { symbol: 'EUR.QAR', baseCurrency: 'EUR', quoteCurrency: 'QAR', description: 'Euro / Qatari Riyal' },
+  { symbol: 'EUR.AED', baseCurrency: 'EUR', quoteCurrency: 'AED', description: 'Euro / UAE Dirham' },
+  { symbol: 'EUR.SAR', baseCurrency: 'EUR', quoteCurrency: 'SAR', description: 'Euro / Saudi Riyal' }
+];
+
+/**
+ * Get the base currency for a forex pair (the part before the dot)
+ * @param symbol - The forex pair symbol (e.g., EUR.USD)
+ * @returns The base currency (e.g., EUR)
+ */
+export function getForexBaseCurrency(symbol: string): string {
+  const parts = symbol.toUpperCase().split('.');
+  return parts[0] || symbol;
+}
+
+/**
+ * Get the quote currency for a forex pair (the part after the dot)
+ * @param symbol - The forex pair symbol (e.g., EUR.USD)
+ * @returns The quote currency (e.g., USD)
+ */
+export function getForexQuoteCurrency(symbol: string): string {
+  const parts = symbol.toUpperCase().split('.');
+  return parts[1] || 'USD';
+}
+
+/**
+ * Check if a symbol is a forex pair
+ * @param symbol - The symbol to check
+ * @returns True if the symbol is a forex pair (contains a dot)
+ */
+export function isForexSymbol(symbol: string): boolean {
+  return symbol.includes('.') && IBFX_SYMBOLS.some(fx => fx.symbol === symbol.toUpperCase());
+}
+
+/**
+ * Get forex symbol details
+ * @param symbol - The forex pair symbol (e.g., EUR.USD)
+ * @returns The ForexSymbol object or undefined if not found
+ */
+export function getForexSymbolDetails(symbol: string): ForexSymbol | undefined {
+  return IBFX_SYMBOLS.find(fx => fx.symbol === symbol.toUpperCase());
+}
+
 /**
  * Get the IBKR formatted symbol for PAXOS crypto
  * IBKR expects just the ticker (BTC), NOT BTC.USD
@@ -423,7 +603,26 @@ export const POPULAR_SYMBOLS: Record<string, Record<string, string[]>> = {
     'FOP': ['GC', 'SI', 'HG']
   },
   'IDEALPRO': {
-    'CASH': ['EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD', 'EUR.GBP', 'EUR.JPY', 'GBP.JPY']
+    'CASH': [
+      // Major Pairs
+      'EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD',
+      // Popular Crosses
+      'EUR.GBP', 'EUR.JPY', 'GBP.JPY', 'EUR.CHF', 'EUR.AUD', 'EUR.CAD', 'GBP.CHF',
+      'AUD.JPY', 'NZD.JPY', 'CAD.JPY', 'CHF.JPY',
+      // Exotic Pairs
+      'USD.TRY', 'EUR.TRY', 'USD.ZAR', 'EUR.ZAR', 'USD.CNH', 'EUR.CNH'
+    ]
+  },
+  'IBFX': {
+    'CASH': [
+      // Major Pairs
+      'EUR.USD', 'GBP.USD', 'USD.JPY', 'AUD.USD', 'USD.CAD', 'USD.CHF', 'NZD.USD',
+      // Popular Crosses
+      'EUR.GBP', 'EUR.JPY', 'GBP.JPY', 'EUR.CHF', 'EUR.AUD', 'EUR.CAD', 'GBP.CHF',
+      'AUD.JPY', 'NZD.JPY', 'CAD.JPY', 'CHF.JPY',
+      // Exotic Pairs
+      'USD.TRY', 'EUR.TRY', 'USD.ZAR', 'EUR.ZAR', 'USD.CNH', 'EUR.CNH'
+    ]
   },
   'PAXOS': {
     'CRYPTO': ['BTC', 'ETH', 'LTC', 'BCH', 'SOL', 'LINK', 'AAVE', 'MATIC', 'UNI']

@@ -21,7 +21,7 @@ interface SymbolSelectorProps {
   disabled?: boolean;
 }
 
-const POPULAR_SYMBOLS = [
+const POPULAR_STOCKS = [
   { symbol: 'AAPL', name: 'Apple Inc.' },
   { symbol: 'MSFT', name: 'Microsoft Corporation' },
   { symbol: 'GOOGL', name: 'Alphabet Inc.' },
@@ -34,6 +34,19 @@ const POPULAR_SYMBOLS = [
   { symbol: 'IWM', name: 'iShares Russell 2000 ETF' }
 ];
 
+const POPULAR_FOREX = [
+  { symbol: 'EUR.USD', name: 'Euro / US Dollar', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'GBP.USD', name: 'British Pound / US Dollar', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'USD.JPY', name: 'US Dollar / Japanese Yen', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'AUD.USD', name: 'Australian Dollar / US Dollar', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'USD.CAD', name: 'US Dollar / Canadian Dollar', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'EUR.GBP', name: 'Euro / British Pound', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'EUR.JPY', name: 'Euro / Japanese Yen', secType: 'CASH', exchange: 'IDEALPRO' },
+  { symbol: 'GBP.JPY', name: 'British Pound / Japanese Yen', secType: 'CASH', exchange: 'IDEALPRO' }
+];
+
+type AssetType = 'stocks' | 'forex';
+
 export default function SymbolSelector({
   selectedContract,
   onContractSelect,
@@ -45,6 +58,34 @@ export default function SymbolSelector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [assetType, setAssetType] = useState<AssetType>('stocks');
+
+  // Determine security type and exchange based on symbol format
+  const getContractParams = (sym: string) => {
+    const upperSym = sym.toUpperCase().trim();
+    
+    // Check if it's a forex pair (contains a dot and matches forex pattern)
+    if (upperSym.includes('.')) {
+      const parts = upperSym.split('.');
+      if (parts.length === 2 && parts[0].length === 3 && parts[1].length === 3) {
+        // Forex pair format: EUR.USD
+        return {
+          symbol: upperSym,
+          secType: 'CASH',
+          exchange: 'IDEALPRO',
+          currency: parts[1] // Quote currency
+        };
+      }
+    }
+    
+    // Default to stock
+    return {
+      symbol: upperSym,
+      secType: 'STK',
+      exchange: 'SMART',
+      currency: 'USD'
+    };
+  };
 
   const handleSearch = async () => {
     if (!symbol.trim() || disabled) return;
@@ -56,6 +97,9 @@ export default function SymbolSelector({
     try {
       // Use dynamic API URL that auto-detects correct backend address
       const backendUrl = getApiUrl();
+      
+      // Get contract parameters based on symbol format
+      const params = getContractParams(symbol);
 
       const response = await fetch(`${backendUrl}/api/market-data/search`, {
         method: 'POST',
@@ -64,10 +108,10 @@ export default function SymbolSelector({
           'x-data-query-enabled': 'true',
         },
         body: JSON.stringify({
-          symbol: symbol.trim().toUpperCase(),
-          secType: 'STK',
-          exchange: 'SMART',
-          currency: 'USD',
+          symbol: params.symbol,
+          secType: params.secType,
+          exchange: params.exchange,
+          currency: params.currency,
           searchByName: false,
           account_mode: accountMode
         }),
@@ -95,13 +139,30 @@ export default function SymbolSelector({
     }
   };
 
-  const handleQuickSearch = (quickSymbol: string) => {
+  const handleQuickSearch = (quickSymbol: string, symbolSecType?: string, symbolExchange?: string) => {
     if (disabled) return;
     setSymbol(quickSymbol);
     setError(null);
     setSearchResults([]);
     setShowResults(false);
-    // Auto-search after setting symbol
+    
+    // For forex symbols, auto-create the contract without search
+    if (symbolSecType === 'CASH' && quickSymbol.includes('.')) {
+      const parts = quickSymbol.split('.');
+      const forexContract: ContractResult = {
+        conid: `forex_${quickSymbol}`,
+        symbol: quickSymbol,
+        companyName: `${parts[0]}/${parts[1]}`,
+        description: `Forex: ${parts[0]}/${parts[1]}`,
+        secType: 'CASH',
+        currency: parts[1],
+        exchange: symbolExchange || 'IDEALPRO'
+      };
+      onContractSelect(forexContract);
+      return;
+    }
+    
+    // Auto-search after setting symbol for stocks
     setTimeout(() => {
       setSymbol(quickSymbol);
       handleSearch();
@@ -142,21 +203,65 @@ export default function SymbolSelector({
         )}
       </div>
 
+      {/* Asset Type Toggle */}
+      <div className="mb-4">
+        <div className="flex space-x-2 mb-3">
+          <button
+            onClick={() => setAssetType('stocks')}
+            disabled={disabled}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              assetType === 'stocks'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            } disabled:opacity-50`}
+          >
+            📈 Stocks
+          </button>
+          <button
+            onClick={() => setAssetType('forex')}
+            disabled={disabled}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              assetType === 'forex'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            } disabled:opacity-50`}
+          >
+            💱 Forex
+          </button>
+        </div>
+      </div>
+
       {/* Quick Search */}
       <div className="mb-4">
-        <div className="text-xs text-gray-600 mb-2">Quick Search:</div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          {POPULAR_SYMBOLS.map((item) => (
-            <button
-              key={item.symbol}
-              onClick={() => handleQuickSearch(item.symbol)}
-              disabled={disabled}
-              className="p-2 text-xs sm:text-sm bg-gray-100 hover:bg-blue-100 text-gray-700 hover:text-blue-700 rounded-md transition-colors disabled:opacity-50"
-            >
-              <div className="font-medium truncate">{item.symbol}</div>
-              <div className="text-xs text-gray-500 truncate">{item.name}</div>
-            </button>
-          ))}
+        <div className="text-xs text-gray-600 mb-2">
+          Quick Search - {assetType === 'stocks' ? 'Popular Stocks' : 'Major Forex Pairs'}:
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {assetType === 'stocks' ? (
+            POPULAR_STOCKS.map((item) => (
+              <button
+                key={item.symbol}
+                onClick={() => handleQuickSearch(item.symbol)}
+                disabled={disabled}
+                className="p-2 text-xs sm:text-sm bg-gray-100 hover:bg-blue-100 text-gray-700 hover:text-blue-700 rounded-md transition-colors disabled:opacity-50"
+              >
+                <div className="font-medium truncate">{item.symbol}</div>
+                <div className="text-xs text-gray-500 truncate">{item.name}</div>
+              </button>
+            ))
+          ) : (
+            POPULAR_FOREX.map((item) => (
+              <button
+                key={item.symbol}
+                onClick={() => handleQuickSearch(item.symbol, item.secType, item.exchange)}
+                disabled={disabled}
+                className="p-2 text-xs sm:text-sm bg-gray-100 hover:bg-green-100 text-gray-700 hover:text-green-700 rounded-md transition-colors disabled:opacity-50"
+              >
+                <div className="font-medium truncate">{item.symbol}</div>
+                <div className="text-xs text-gray-500 truncate">{item.name}</div>
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -168,7 +273,7 @@ export default function SymbolSelector({
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Enter symbol (e.g., MSFT, AAPL)"
+            placeholder={assetType === 'stocks' ? "Enter symbol (e.g., MSFT, AAPL)" : "Enter forex pair (e.g., EUR.USD)"}
             disabled={disabled}
             className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
           />

@@ -559,12 +559,40 @@ def cache_symbols(cache_key: str, data: List[Dict]) -> None:
 def create_contract(symbol: str, sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD'):
     """Create IB contract using TWS API
     
-    Special handling for PAXOS cryptocurrency exchange:
+    Special handling for different security types:
+    
+    FOREX (CASH) on IDEALPRO/IBFX:
+    - Symbol format is BASE.QUOTE (e.g., EUR.USD)
+    - The base currency (EUR) becomes the 'symbol' field
+    - The quote currency (USD) becomes the 'currency' field
+    - secType = CASH, exchange = IDEALPRO (or IBFX)
+    
+    PAXOS cryptocurrency exchange:
     - PAXOS crypto symbols should be just the ticker (e.g., BTC, ETH)
     - The currency field (USD) defines the quote currency
     - DO NOT add .USD suffix to the symbol - IB uses the currency field for that
     """
     contract = Contract()
+    
+    # Handle FOREX (CASH) symbols on IDEALPRO or IBFX
+    # Forex symbol format: EUR.USD -> symbol=EUR, currency=USD
+    if sec_type.upper() == 'CASH' and exchange.upper() in ['IDEALPRO', 'IBFX']:
+        clean_symbol = symbol.upper()
+        if '.' in clean_symbol:
+            # Split the forex pair: EUR.USD -> base=EUR, quote=USD
+            parts = clean_symbol.split('.')
+            base_currency = parts[0]
+            quote_currency = parts[1] if len(parts) > 1 else currency
+            contract.symbol = base_currency
+            contract.currency = quote_currency
+            logger.info(f"Creating FOREX contract: {base_currency}/{quote_currency} on {exchange}")
+        else:
+            # If no dot, assume it's just the base currency and use provided currency
+            contract.symbol = clean_symbol
+            contract.currency = currency
+        contract.secType = 'CASH'
+        contract.exchange = exchange
+        return contract
     
     # Handle PAXOS cryptocurrency symbols
     # IBKR crypto format: symbol=BTC, secType=CRYPTO, exchange=PAXOS, currency=USD
@@ -1328,14 +1356,24 @@ async def get_historical_data(
         format_date = 1  # Force string format for compatibility
         
         # Determine whatToShow based on security type
-        # CRYPTO contracts on PAXOS: try TRADES first (most common), fallback to others
-        # Valid options for crypto: TRADES, MIDPOINT, BID, ASK, BID_ASK
+        # Different security types require different data types:
+        # - STK (Stocks): TRADES is most common
+        # - CRYPTO: try TRADES first, fallback to MIDPOINT, BID_ASK
+        # - CASH (Forex): use MIDPOINT (forex has no trades, only quotes)
+        
         if secType.upper() == 'CRYPTO':
             # Try multiple data types for crypto
             crypto_data_types = ['TRADES', 'MIDPOINT', 'BID_ASK']
             what_to_show = 'TRADES'  # Start with TRADES
             use_rth = 0  # CRYPTO trades 24/7, no regular trading hours
             logger.info(f"Using {what_to_show} for CRYPTO contract (24/7 trading)")
+        elif secType.upper() == 'CASH':
+            # Forex (CASH) uses MIDPOINT - forex doesn't have trades, only bid/ask quotes
+            # Valid options for forex: MIDPOINT, BID, ASK, BID_ASK
+            crypto_data_types = ['MIDPOINT', 'BID', 'ASK']  # Try MIDPOINT first
+            what_to_show = 'MIDPOINT'
+            use_rth = 0  # Forex trades 24/5, no regular trading hours restriction
+            logger.info(f"Using {what_to_show} for FOREX (CASH) contract (24/5 trading)")
         else:
             crypto_data_types = None
             what_to_show = 'TRADES'
@@ -1654,13 +1692,19 @@ async def run_backtest(
             detail=f"Failed to run backtest: {str(e)}"
         )
 
-def get_realtime_data_sync(symbol: str, account_mode: str = "paper"):
-    """Get real-time market data using TWS API"""
+def get_realtime_data_sync(symbol: str, account_mode: str = "paper", sec_type: str = "STK", exchange: str = "SMART", currency: str = "USD"):
+    """Get real-time market data using TWS API
+    
+    Supports:
+    - STK (Stocks): Standard stock quotes
+    - CASH (Forex): Currency pair quotes using MIDPOINT
+    - CRYPTO: Cryptocurrency quotes
+    """
     try:
         data_type = get_data_type_for_account_mode(account_mode)
         data_source = get_market_data_source(account_mode)
         
-        logger.info(f"Starting {data_type} data request for symbol: {symbol} ({account_mode} mode)")
+        logger.info(f"Starting {data_type} data request for symbol: {symbol} ({sec_type}) ({account_mode} mode)")
         
         # Get connection
         ib = get_ib_connection()
@@ -1683,8 +1727,8 @@ def get_realtime_data_sync(symbol: str, account_mode: str = "paper"):
         # Small delay to allow market data type to be set
         time.sleep(1)
         
-        # Create contract
-        contract = create_contract(symbol.upper())
+        # Create contract with appropriate parameters
+        contract = create_contract(symbol.upper(), sec_type, exchange, currency)
         logger.info(f"Created contract for {symbol}: {contract}")
         
         # Request contract details to qualify the contract
@@ -1838,13 +1882,31 @@ def get_tick_data_sync(symbol: str, account_mode: str = "paper"):
 
 # Real-time data endpoint
 @app.get("/market-data/realtime", response_model=RealTimeQuote)
-async def get_realtime_data(symbol: str, account_mode: str = "paper"):
-    """Get real-time market data"""
+async def get_realtime_data(
+    symbol: str, 
+    account_mode: str = "paper",
+    secType: str = "STK",
+    exchange: str = "SMART",
+    currency: str = "USD"
+):
+    """Get real-time market data
+    
+    Supports multiple security types:
+    - STK: Stocks (default)
+    - CASH: Forex currency pairs (use IDEALPRO or IBFX exchange)
+    - CRYPTO: Cryptocurrency (use PAXOS exchange)
+    
+    For forex pairs like EUR.USD:
+    - symbol: EUR.USD
+    - secType: CASH
+    - exchange: IDEALPRO or IBFX
+    - currency: USD (or the quote currency)
+    """
     try:
-        logger.info(f"Real-time data endpoint called for symbol: {symbol}")
+        logger.info(f"Real-time data endpoint called for symbol: {symbol} ({secType}) on {exchange}")
         
         # Run the synchronous operation in a separate thread
-        quote = await run_tws_operation(lambda: get_realtime_data_sync(symbol, account_mode))
+        quote = await run_tws_operation(lambda: get_realtime_data_sync(symbol, account_mode, secType, exchange, currency))
         
         logger.info(f"Successfully retrieved market data for {symbol}")
         return quote
@@ -2103,6 +2165,359 @@ async def get_crypto_quote(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get crypto quote: {str(e)}"
         )
+
+
+# =============================================================================
+# FOREX (CASH) STREAMING ENDPOINT
+# Real-time streaming data for forex pairs (24/5 market)
+# Uses reqRealTimeBars for 5-second OHLC bars
+# =============================================================================
+
+class ForexStreamResponse(BaseModel):
+    symbol: str
+    baseCurrency: str
+    quoteCurrency: str
+    exchange: str = "IDEALPRO"
+    secType: str = "CASH"
+    bars: list
+    bar_count: int
+    collection_time_seconds: int
+    timestamp: str
+    status: str
+
+@app.get("/market-data/forex/stream")
+async def get_forex_stream(
+    symbol: str,
+    duration_seconds: int = 60,
+    account_mode: str = "paper",
+    exchange: str = "IDEALPRO"
+):
+    """
+    Stream real-time forex data from IDEALPRO or IBFX exchange.
+    
+    Collects real-time 5-second bars for the specified duration.
+    Forex trades 24/5 (closed on weekends).
+    
+    Args:
+        symbol: Forex pair symbol (e.g., EUR.USD, GBP.JPY)
+        duration_seconds: How long to collect data (default 60 seconds, max 300)
+        account_mode: 'paper' or 'live'
+        exchange: 'IDEALPRO' (default) or 'IBFX'
+    
+    Returns:
+        Collection of 5-second OHLC bars
+    """
+    try:
+        # Limit duration to prevent long requests
+        duration_seconds = min(duration_seconds, 300)  # Max 5 minutes
+        
+        # Parse forex symbol to get base and quote currencies
+        symbol_upper = symbol.upper()
+        if '.' not in symbol_upper:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid forex symbol format. Use BASE.QUOTE format (e.g., EUR.USD)"
+            )
+        
+        parts = symbol_upper.split('.')
+        base_currency = parts[0]
+        quote_currency = parts[1] if len(parts) > 1 else 'USD'
+        
+        logger.info(f"Starting forex stream for {base_currency}/{quote_currency} on {exchange} for {duration_seconds}s")
+        
+        # Get connection
+        ib = get_ib_connection()
+        
+        if not verify_connection_health(ib):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="IB Gateway connection is not available"
+            )
+        
+        # Set market data type
+        if account_mode.lower() == 'live':
+            ib.reqMarketDataType(1)
+        else:
+            ib.reqMarketDataType(3)
+        
+        time.sleep(0.5)
+        
+        # Create forex contract
+        contract = create_contract(symbol_upper, 'CASH', exchange, quote_currency)
+        
+        # Qualify the contract
+        ib.contracts = []
+        ib.reqContractDetails(30, contract)
+        
+        wait_time = 0
+        while len(ib.contracts) == 0 and wait_time < 10:
+            time.sleep(1)
+            wait_time += 1
+        
+        if not ib.contracts:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Forex pair {symbol} not found on {exchange}. Check symbol format (e.g., EUR.USD)"
+            )
+        
+        qualified_contract = ib.contracts[0]
+        logger.info(f"Qualified forex contract: {qualified_contract.symbol}/{qualified_contract.currency}")
+        
+        # Clear previous real-time bars
+        req_id = 31  # Unique reqId for forex streaming
+        ib.realtime_bars[req_id] = []
+        
+        # Request real-time 5-second bars
+        # whatToShow: MIDPOINT works best for forex (no actual trades, only quotes)
+        logger.info(f"Requesting real-time forex bars for {base_currency}/{quote_currency}")
+        ib.reqRealTimeBars(
+            req_id,
+            qualified_contract,
+            5,  # bar size in seconds (only 5 is supported by IB)
+            "MIDPOINT",  # whatToShow - MIDPOINT for forex bid/ask midpoint
+            False,  # useRTH - False for 24/5 forex
+            []  # realTimeBarsOptions
+        )
+        
+        # Collect bars for the specified duration
+        logger.info(f"Collecting real-time forex bars for {duration_seconds} seconds...")
+        start_time = time.time()
+        
+        while (time.time() - start_time) < duration_seconds:
+            time.sleep(1)
+            bar_count = len(ib.realtime_bars.get(req_id, []))
+            elapsed = int(time.time() - start_time)
+            if elapsed % 10 == 0:  # Log every 10 seconds
+                logger.info(f"Collected {bar_count} forex bars after {elapsed}s")
+        
+        # Cancel the real-time bar subscription
+        ib.cancelRealTimeBars(req_id)
+        logger.info("Cancelled real-time forex bar subscription")
+        
+        # Get collected bars
+        bars = ib.realtime_bars.get(req_id, [])
+        logger.info(f"Total collected: {len(bars)} forex bars")
+        
+        if not bars:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No real-time data received for {symbol}. The forex market may be closed (weekends) or there's a subscription issue."
+            )
+        
+        return ForexStreamResponse(
+            symbol=symbol_upper,
+            baseCurrency=base_currency,
+            quoteCurrency=quote_currency,
+            exchange=exchange,
+            secType="CASH",
+            bars=bars,
+            bar_count=len(bars),
+            collection_time_seconds=duration_seconds,
+            timestamp=datetime.now().isoformat(),
+            status="success"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in forex stream: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stream forex data: {str(e)}"
+        )
+
+
+@app.get("/market-data/forex/quote")
+async def get_forex_quote(
+    symbol: str,
+    account_mode: str = "paper",
+    exchange: str = "IDEALPRO"
+):
+    """
+    Get current real-time quote for a forex pair.
+    
+    Returns bid, ask, and midpoint price for the currency pair.
+    
+    Args:
+        symbol: Forex pair symbol (e.g., EUR.USD, GBP.JPY)
+        account_mode: 'paper' or 'live'
+        exchange: 'IDEALPRO' (default) or 'IBFX'
+    """
+    try:
+        # Parse forex symbol
+        symbol_upper = symbol.upper()
+        if '.' not in symbol_upper:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid forex symbol format. Use BASE.QUOTE format (e.g., EUR.USD)"
+            )
+        
+        parts = symbol_upper.split('.')
+        base_currency = parts[0]
+        quote_currency = parts[1] if len(parts) > 1 else 'USD'
+        
+        logger.info(f"Getting forex quote for {base_currency}/{quote_currency} on {exchange}")
+        
+        # Get connection
+        ib = get_ib_connection()
+        
+        if not verify_connection_health(ib):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="IB Gateway connection is not available"
+            )
+        
+        # Set market data type
+        if account_mode.lower() == 'live':
+            ib.reqMarketDataType(1)
+        else:
+            ib.reqMarketDataType(3)
+        
+        time.sleep(0.5)
+        
+        # Create forex contract
+        contract = create_contract(symbol_upper, 'CASH', exchange, quote_currency)
+        
+        # Qualify the contract
+        ib.contracts = []
+        ib.reqContractDetails(32, contract)
+        
+        wait_time = 0
+        while len(ib.contracts) == 0 and wait_time < 10:
+            time.sleep(1)
+            wait_time += 1
+        
+        if not ib.contracts:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Forex pair {symbol} not found on {exchange}"
+            )
+        
+        qualified_contract = ib.contracts[0]
+        
+        # Request market data
+        req_id = 33
+        ib.reqMktData(req_id, qualified_contract, '', False, False, [])
+        
+        # Wait for data
+        time.sleep(3)
+        
+        # Get tick data
+        tick_data = ib.data.get(req_id, {})
+        
+        # Cancel subscription
+        ib.cancelMktData(req_id)
+        
+        # Extract prices
+        bid = tick_data.get('bid')
+        ask = tick_data.get('ask')
+        
+        # Calculate midpoint
+        midpoint = None
+        if bid and ask:
+            try:
+                bid_f = float(bid)
+                ask_f = float(ask)
+                if not math.isnan(bid_f) and not math.isnan(ask_f):
+                    midpoint = (bid_f + ask_f) / 2
+            except (ValueError, TypeError):
+                pass
+        
+        return {
+            "symbol": symbol_upper,
+            "baseCurrency": base_currency,
+            "quoteCurrency": quote_currency,
+            "exchange": exchange,
+            "secType": "CASH",
+            "bid": float(bid) if bid and not math.isnan(float(bid)) else None,
+            "ask": float(ask) if ask and not math.isnan(float(ask)) else None,
+            "midpoint": midpoint,
+            "spread": (float(ask) - float(bid)) if bid and ask and not math.isnan(float(bid)) and not math.isnan(float(ask)) else None,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success" if (bid or ask) else "no_data"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting forex quote: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get forex quote: {str(e)}"
+        )
+
+
+@app.get("/market-data/forex/symbols")
+async def get_forex_symbols():
+    """
+    Get list of available IBFX forex symbols.
+    
+    Returns all supported forex currency pairs with their descriptions.
+    """
+    # Return all available forex pairs
+    forex_pairs = [
+        # Major Pairs
+        {"symbol": "EUR.USD", "baseCurrency": "EUR", "quoteCurrency": "USD", "description": "Euro / US Dollar", "category": "Major"},
+        {"symbol": "GBP.USD", "baseCurrency": "GBP", "quoteCurrency": "USD", "description": "British Pound / US Dollar", "category": "Major"},
+        {"symbol": "USD.JPY", "baseCurrency": "USD", "quoteCurrency": "JPY", "description": "US Dollar / Japanese Yen", "category": "Major"},
+        {"symbol": "USD.CHF", "baseCurrency": "USD", "quoteCurrency": "CHF", "description": "US Dollar / Swiss Franc", "category": "Major"},
+        {"symbol": "AUD.USD", "baseCurrency": "AUD", "quoteCurrency": "USD", "description": "Australian Dollar / US Dollar", "category": "Major"},
+        {"symbol": "NZD.USD", "baseCurrency": "NZD", "quoteCurrency": "USD", "description": "New Zealand Dollar / US Dollar", "category": "Major"},
+        {"symbol": "USD.CAD", "baseCurrency": "USD", "quoteCurrency": "CAD", "description": "US Dollar / Canadian Dollar", "category": "Major"},
+        
+        # EUR Crosses
+        {"symbol": "EUR.GBP", "baseCurrency": "EUR", "quoteCurrency": "GBP", "description": "Euro / British Pound", "category": "EUR Cross"},
+        {"symbol": "EUR.JPY", "baseCurrency": "EUR", "quoteCurrency": "JPY", "description": "Euro / Japanese Yen", "category": "EUR Cross"},
+        {"symbol": "EUR.CHF", "baseCurrency": "EUR", "quoteCurrency": "CHF", "description": "Euro / Swiss Franc", "category": "EUR Cross"},
+        {"symbol": "EUR.AUD", "baseCurrency": "EUR", "quoteCurrency": "AUD", "description": "Euro / Australian Dollar", "category": "EUR Cross"},
+        {"symbol": "EUR.CAD", "baseCurrency": "EUR", "quoteCurrency": "CAD", "description": "Euro / Canadian Dollar", "category": "EUR Cross"},
+        {"symbol": "EUR.NZD", "baseCurrency": "EUR", "quoteCurrency": "NZD", "description": "Euro / New Zealand Dollar", "category": "EUR Cross"},
+        
+        # GBP Crosses
+        {"symbol": "GBP.JPY", "baseCurrency": "GBP", "quoteCurrency": "JPY", "description": "British Pound / Japanese Yen", "category": "GBP Cross"},
+        {"symbol": "GBP.CHF", "baseCurrency": "GBP", "quoteCurrency": "CHF", "description": "British Pound / Swiss Franc", "category": "GBP Cross"},
+        {"symbol": "GBP.AUD", "baseCurrency": "GBP", "quoteCurrency": "AUD", "description": "British Pound / Australian Dollar", "category": "GBP Cross"},
+        {"symbol": "GBP.CAD", "baseCurrency": "GBP", "quoteCurrency": "CAD", "description": "British Pound / Canadian Dollar", "category": "GBP Cross"},
+        {"symbol": "GBP.NZD", "baseCurrency": "GBP", "quoteCurrency": "NZD", "description": "British Pound / New Zealand Dollar", "category": "GBP Cross"},
+        
+        # Other Crosses
+        {"symbol": "AUD.JPY", "baseCurrency": "AUD", "quoteCurrency": "JPY", "description": "Australian Dollar / Japanese Yen", "category": "Cross"},
+        {"symbol": "AUD.CAD", "baseCurrency": "AUD", "quoteCurrency": "CAD", "description": "Australian Dollar / Canadian Dollar", "category": "Cross"},
+        {"symbol": "AUD.CHF", "baseCurrency": "AUD", "quoteCurrency": "CHF", "description": "Australian Dollar / Swiss Franc", "category": "Cross"},
+        {"symbol": "AUD.NZD", "baseCurrency": "AUD", "quoteCurrency": "NZD", "description": "Australian Dollar / New Zealand Dollar", "category": "Cross"},
+        {"symbol": "NZD.JPY", "baseCurrency": "NZD", "quoteCurrency": "JPY", "description": "New Zealand Dollar / Japanese Yen", "category": "Cross"},
+        {"symbol": "NZD.CHF", "baseCurrency": "NZD", "quoteCurrency": "CHF", "description": "New Zealand Dollar / Swiss Franc", "category": "Cross"},
+        {"symbol": "NZD.CAD", "baseCurrency": "NZD", "quoteCurrency": "CAD", "description": "New Zealand Dollar / Canadian Dollar", "category": "Cross"},
+        {"symbol": "CAD.JPY", "baseCurrency": "CAD", "quoteCurrency": "JPY", "description": "Canadian Dollar / Japanese Yen", "category": "Cross"},
+        {"symbol": "CAD.CHF", "baseCurrency": "CAD", "quoteCurrency": "CHF", "description": "Canadian Dollar / Swiss Franc", "category": "Cross"},
+        {"symbol": "CHF.JPY", "baseCurrency": "CHF", "quoteCurrency": "JPY", "description": "Swiss Franc / Japanese Yen", "category": "Cross"},
+        
+        # Exotic Pairs
+        {"symbol": "USD.TRY", "baseCurrency": "USD", "quoteCurrency": "TRY", "description": "US Dollar / Turkish Lira", "category": "Exotic"},
+        {"symbol": "EUR.TRY", "baseCurrency": "EUR", "quoteCurrency": "TRY", "description": "Euro / Turkish Lira", "category": "Exotic"},
+        {"symbol": "USD.ZAR", "baseCurrency": "USD", "quoteCurrency": "ZAR", "description": "US Dollar / South African Rand", "category": "Exotic"},
+        {"symbol": "EUR.ZAR", "baseCurrency": "EUR", "quoteCurrency": "ZAR", "description": "Euro / South African Rand", "category": "Exotic"},
+        {"symbol": "USD.CNH", "baseCurrency": "USD", "quoteCurrency": "CNH", "description": "US Dollar / Chinese Renminbi Offshore", "category": "Exotic"},
+        {"symbol": "EUR.CNH", "baseCurrency": "EUR", "quoteCurrency": "CNH", "description": "Euro / Chinese Renminbi Offshore", "category": "Exotic"},
+        {"symbol": "GBP.ZAR", "baseCurrency": "GBP", "quoteCurrency": "ZAR", "description": "British Pound / South African Rand", "category": "Exotic"},
+        {"symbol": "EUR.MXN", "baseCurrency": "EUR", "quoteCurrency": "MXN", "description": "Euro / Mexican Peso", "category": "Exotic"},
+        {"symbol": "GBP.MXN", "baseCurrency": "GBP", "quoteCurrency": "MXN", "description": "British Pound / Mexican Peso", "category": "Exotic"},
+        {"symbol": "EUR.SEK", "baseCurrency": "EUR", "quoteCurrency": "SEK", "description": "Euro / Swedish Krona", "category": "Exotic"},
+        {"symbol": "EUR.NOK", "baseCurrency": "EUR", "quoteCurrency": "NOK", "description": "Euro / Norwegian Krone", "category": "Exotic"},
+        {"symbol": "EUR.DKK", "baseCurrency": "EUR", "quoteCurrency": "DKK", "description": "Euro / Danish Krone", "category": "Exotic"},
+        {"symbol": "EUR.PLN", "baseCurrency": "EUR", "quoteCurrency": "PLN", "description": "Euro / Polish Zloty", "category": "Exotic"},
+        {"symbol": "EUR.HUF", "baseCurrency": "EUR", "quoteCurrency": "HUF", "description": "Euro / Hungarian Forint", "category": "Exotic"},
+        {"symbol": "EUR.CZK", "baseCurrency": "EUR", "quoteCurrency": "CZK", "description": "Euro / Czech Koruna", "category": "Exotic"},
+    ]
+    
+    return {
+        "symbols": forex_pairs,
+        "count": len(forex_pairs),
+        "exchanges": ["IDEALPRO", "IBFX"],
+        "secType": "CASH",
+        "tradingHours": "24/5 (Sunday 5PM ET to Friday 5PM ET)"
+    }
+
 
 # Contract search endpoint
 @app.post("/contract/search")
