@@ -11,6 +11,8 @@ import tradingSetupRoutes from './routes/tradingSetup.js';
 import marketDataCollectionRoutes from './routes/marketDataCollection.js';
 import strategiesRoutes from './routes/strategies.js';
 import tradingRoutes from './routes/trading.js';
+import ibConnectionRoutes from './routes/ibConnections.js';
+import systemSettingsRoutes from './routes/systemSettings.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
 import { backgroundJobs } from './services/backgroundJobs.js';
@@ -126,6 +128,8 @@ app.use('/api/trading-setup', tradingSetupRoutes);
 app.use('/api/market-data', marketDataCollectionRoutes);
 app.use('/api/strategies', strategiesRoutes);
 app.use('/api/trading', tradingRoutes);
+app.use('/api/ib-connections', ibConnectionRoutes);
+app.use('/api/system-settings', systemSettingsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -142,7 +146,9 @@ app.get('/', (req, res) => {
       trading_setup: '/api/trading-setup',
       strategies: '/api/strategies',
       trading: '/api/trading',
-      settings: '/api/settings'
+      settings: '/api/settings',
+      ib_connections: '/api/ib-connections',
+      system_settings: '/api/system-settings'
     }
   });
 });

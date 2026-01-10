@@ -40,10 +40,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-IB_HOST = os.getenv('IB_HOST')
-if not IB_HOST:
-    raise ValueError("IB_HOST environment variable is required")
-
+# IB_HOST is now OPTIONAL - connections are configured via browser UI
+# If set, it will be used as the default for backward compatibility
+IB_HOST = os.getenv('IB_HOST', 'localhost')  # Default to localhost if not set
 IB_PORT = int(os.getenv('IB_PORT', '4002'))
 IB_CLIENT_ID = int(os.getenv('IB_CLIENT_ID', '1'))
 IB_TIMEOUT = int(os.getenv('IB_TIMEOUT', '15'))
@@ -51,6 +50,13 @@ CORS_ORIGINS = os.getenv('IB_CORS_ORIGINS', '').split(',') if os.getenv('IB_CORS
 
 # Trading account configuration
 DEFAULT_ACCOUNT_MODE = os.getenv('DEFAULT_ACCOUNT_MODE', 'paper')  # 'paper' or 'live'
+
+# Flag to indicate if IB connection is configured via environment or browser
+IB_ENV_CONFIGURED = bool(os.getenv('IB_HOST'))
+if IB_ENV_CONFIGURED:
+    logger.info(f"IB connection configured via environment: {IB_HOST}:{IB_PORT}")
+else:
+    logger.info("IB connection will be configured dynamically via browser UI")
 
 # Global IB connection
 ib_client = None
@@ -1079,15 +1085,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health check endpoint - no IB connection test
+# Health check endpoint - includes connection status
 @app.get("/health")
 async def health_check():
-    """Health check endpoint - service status only, no IB Gateway connection test"""
+    """Health check endpoint - service status with IB Gateway connection info"""
+    dynamic_config = connection_status.get('dynamic_config', {})
+    current_host = dynamic_config.get('host', IB_HOST) if dynamic_config else IB_HOST
+    current_port = dynamic_config.get('port', IB_PORT) if dynamic_config else IB_PORT
+    current_client_id = dynamic_config.get('client_id', IB_CLIENT_ID) if dynamic_config else IB_CLIENT_ID
+    current_account_mode = dynamic_config.get('account_mode', DEFAULT_ACCOUNT_MODE) if dynamic_config else DEFAULT_ACCOUNT_MODE
+    
     return {
         "status": "healthy",
         "service": "TWS API Service",
         "version": "4.0.0",
         "timestamp": datetime.now().isoformat(),
+        "connection": {
+            "ib_gateway": {
+                "connected": connection_status['connected'],
+                "host": current_host,
+                "port": current_port,
+                "client_id": current_client_id,
+                "account_mode": current_account_mode,
+                "connection_type": dynamic_config.get('connection_type', 'gateway') if dynamic_config else 'gateway',
+                "last_connected": connection_status['last_connected'],
+                "last_error": connection_status['last_error'],
+                "connection_count": connection_status['connection_count']
+            }
+        },
         "note": "Service is running - IB Gateway connection tested only when endpoints are called"
     }
 
@@ -1187,6 +1212,226 @@ async def disconnect():
     return {
         "status": "disconnected",
         "message": "Disconnected from IB Gateway"
+    }
+
+# Dynamic connection request model
+class DynamicConnectionRequest(BaseModel):
+    host: str
+    port: int
+    client_id: int = 1
+    timeout: int = 15
+    connection_type: str = "gateway"  # "gateway" or "tws"
+    account_mode: str = "paper"  # "paper" or "live"
+
+# Dynamic connection endpoint - connect with custom parameters
+@app.post("/connection/connect")
+async def dynamic_connect(request: DynamicConnectionRequest):
+    """Connect to IB Gateway/TWS with dynamic parameters"""
+    global ib_client, connection_status
+    
+    try:
+        # First disconnect any existing connection
+        if ib_client and ib_client.isConnected():
+            logger.info("Disconnecting existing connection before reconnecting with new parameters...")
+            disconnect_ib()
+            time.sleep(2)  # Wait for cleanup
+        
+        logger.info(f"Attempting dynamic connection to {request.host}:{request.port} (Client ID: {request.client_id})")
+        logger.info(f"Connection type: {request.connection_type}, Account mode: {request.account_mode}")
+        
+        # Create new client
+        ib_client = IBApp()
+        
+        # Connect with provided parameters
+        ib_client.connect(request.host, request.port, request.client_id)
+        
+        # Start the message processing thread
+        api_thread = threading.Thread(target=ib_client.run, daemon=True)
+        api_thread.start()
+        
+        # Wait for connection to stabilize
+        logger.info("Waiting for connection to stabilize...")
+        time.sleep(request.timeout // 3 if request.timeout > 3 else 3)
+        
+        # Verify connection
+        connection_verified = False
+        for verify_attempt in range(5):
+            if ib_client.isConnected():
+                connection_verified = True
+                logger.info(f"✅ Connection verified on attempt {verify_attempt + 1}")
+                break
+            else:
+                logger.warning(f"Connection verification attempt {verify_attempt + 1}/5 - not yet connected, waiting...")
+                time.sleep(2)
+        
+        if connection_verified:
+            connection_status.update({
+                'connected': True,
+                'last_connected': datetime.now().isoformat(),
+                'last_error': None,
+                'connection_count': connection_status['connection_count'] + 1,
+                'dynamic_config': {
+                    'host': request.host,
+                    'port': request.port,
+                    'client_id': request.client_id,
+                    'connection_type': request.connection_type,
+                    'account_mode': request.account_mode
+                }
+            })
+            
+            return {
+                "status": "connected",
+                "success": True,
+                "message": f"Successfully connected to {request.connection_type.upper()} at {request.host}:{request.port}",
+                "connection_info": {
+                    "host": request.host,
+                    "port": request.port,
+                    "client_id": request.client_id,
+                    "connection_type": request.connection_type,
+                    "account_mode": request.account_mode,
+                    "connected_at": connection_status['last_connected']
+                }
+            }
+        else:
+            # Clean up failed connection
+            if ib_client:
+                try:
+                    ib_client.disconnect()
+                except:
+                    pass
+                ib_client = None
+            
+            error_msg = f"Connection to {request.host}:{request.port} could not be verified after {request.timeout} seconds"
+            connection_status.update({
+                'connected': False,
+                'last_error': error_msg
+            })
+            
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=error_msg
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Dynamic connection error: {error_msg}")
+        
+        # Clean up
+        if ib_client:
+            try:
+                ib_client.disconnect()
+            except:
+                pass
+            ib_client = None
+        
+        connection_status.update({
+            'connected': False,
+            'last_error': error_msg
+        })
+        
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Connection failed: {error_msg}"
+        )
+
+# Test connection endpoint - test without fully connecting
+@app.post("/connection/test")
+async def test_connection(request: DynamicConnectionRequest):
+    """Test connection to IB Gateway/TWS without disrupting current connection"""
+    test_client = None
+    
+    try:
+        logger.info(f"Testing connection to {request.host}:{request.port} (Client ID: {request.client_id})")
+        
+        # Create a separate client for testing
+        test_client = IBApp()
+        
+        # Try to connect
+        test_client.connect(request.host, request.port, request.client_id)
+        
+        # Start the message processing thread
+        api_thread = threading.Thread(target=test_client.run, daemon=True)
+        api_thread.start()
+        
+        # Wait briefly for connection
+        time.sleep(min(request.timeout, 10))
+        
+        # Check if connected
+        if test_client.isConnected():
+            # Disconnect test client
+            test_client.disconnect()
+            
+            return {
+                "success": True,
+                "message": f"Successfully connected to {request.connection_type.upper()} at {request.host}:{request.port}",
+                "connection_info": {
+                    "host": request.host,
+                    "port": request.port,
+                    "client_id": request.client_id,
+                    "connection_type": request.connection_type,
+                    "account_mode": request.account_mode
+                }
+            }
+        else:
+            error_msg = test_client.last_error or "Connection could not be established"
+            return {
+                "success": False,
+                "message": f"Failed to connect: {error_msg}",
+                "connection_info": {
+                    "host": request.host,
+                    "port": request.port,
+                    "client_id": request.client_id
+                }
+            }
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Connection test error: {error_msg}")
+        
+        return {
+            "success": False,
+            "message": f"Connection test failed: {error_msg}",
+            "connection_info": {
+                "host": request.host,
+                "port": request.port,
+                "client_id": request.client_id
+            }
+        }
+    finally:
+        # Clean up test client
+        if test_client:
+            try:
+                if test_client.isConnected():
+                    test_client.disconnect()
+            except:
+                pass
+
+# Get current connection configuration
+@app.get("/connection/config")
+async def get_connection_config():
+    """Get current connection configuration"""
+    dynamic_config = connection_status.get('dynamic_config', {})
+    
+    return {
+        "connected": connection_status['connected'],
+        "default_config": {
+            "host": IB_HOST,
+            "port": IB_PORT,
+            "client_id": IB_CLIENT_ID,
+            "timeout": IB_TIMEOUT
+        },
+        "current_config": dynamic_config if dynamic_config else {
+            "host": IB_HOST,
+            "port": IB_PORT,
+            "client_id": IB_CLIENT_ID,
+            "connection_type": "gateway",
+            "account_mode": DEFAULT_ACCOUNT_MODE
+        },
+        "last_connected": connection_status['last_connected'],
+        "last_error": connection_status['last_error'],
+        "connection_count": connection_status['connection_count']
     }
 
 # Helper function to run TWS API operations in executor

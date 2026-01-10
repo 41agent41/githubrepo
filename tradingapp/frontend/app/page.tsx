@@ -3,6 +3,7 @@
 import React from 'react';
 import MarketDataFilter from './components/MarketDataFilter';
 import TradingAccountSwitch from './components/TradingAccountSwitch';
+import ConnectionStatusIndicator from './components/ConnectionStatusIndicator';
 import { useTradingAccount } from './contexts/TradingAccountContext';
 
 export default function HomePage() {
@@ -19,9 +20,7 @@ export default function HomePage() {
               <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1">Interactive Brokers Market Data & TradingView Charts</p>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="text-xs sm:text-sm text-gray-500">
-                Connected to IB Gateway
-              </div>
+              <ConnectionStatusIndicator showDetails={true} />
             </div>
           </div>
         </div>
@@ -92,6 +91,32 @@ export default function HomePage() {
               <div className="min-w-0 flex-1">
                 <h3 className="text-base sm:text-lg lg:text-xl font-medium text-gray-900 truncate">Trading Setup</h3>
                 <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1 line-clamp-2">Configure symbol, timeframes, indicators, and strategies</p>
+              </div>
+            </div>
+          </a>
+          
+          <a 
+            href="/connections" 
+            className="block p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg shadow-sm border border-slate-700 hover:shadow-md hover:border-cyan-500/50 transition-all duration-200"
+          >
+            <div className="flex items-start sm:items-center">
+              <div className="text-2xl sm:text-3xl lg:text-4xl mr-3 sm:mr-4 flex-shrink-0">🔌</div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg lg:text-xl font-medium text-white truncate">IB Connections</h3>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-400 mt-1 line-clamp-2">Configure IB Gateway & TWS connections (Live/Paper)</p>
+              </div>
+            </div>
+          </a>
+          
+          <a 
+            href="/settings" 
+            className="block p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-purple-900/50 to-slate-900 rounded-lg shadow-sm border border-purple-700/50 hover:shadow-md hover:border-purple-500/50 transition-all duration-200"
+          >
+            <div className="flex items-start sm:items-center">
+              <div className="text-2xl sm:text-3xl lg:text-4xl mr-3 sm:mr-4 flex-shrink-0">⚙️</div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg lg:text-xl font-medium text-white truncate">System Settings</h3>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-400 mt-1 line-clamp-2">Configure CORS, security, caching, and all app settings</p>
               </div>
             </div>
           </a>
