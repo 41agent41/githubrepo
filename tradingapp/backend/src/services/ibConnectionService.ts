@@ -237,7 +237,7 @@ class IBConnectionService {
           WHERE id = $2
         `, [error.message, id]);
 
-        await this.logConnectionEvent(id, 'connect_failure', null, error.message);
+        await this.logConnectionEvent(id, 'connect_failure', undefined, error.message);
       }
     }
 
