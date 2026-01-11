@@ -1,6 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { TradingAccountProvider } from './contexts/TradingAccountContext'
+import { IBConnectionProvider } from './contexts/IBConnectionContext'
 
 export const metadata: Metadata = {
   title: 'TradingApp',
@@ -15,9 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <TradingAccountProvider>
+        <IBConnectionProvider>
           {children}
-        </TradingAccountProvider>
+        </IBConnectionProvider>
       </body>
     </html>
   )

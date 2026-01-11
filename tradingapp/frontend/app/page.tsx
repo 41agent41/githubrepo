@@ -2,12 +2,11 @@
 
 import React from 'react';
 import MarketDataFilter from './components/MarketDataFilter';
-import TradingAccountSwitch from './components/TradingAccountSwitch';
 import ConnectionStatusIndicator from './components/ConnectionStatusIndicator';
-import { useTradingAccount } from './contexts/TradingAccountContext';
+import { useIBConnection } from './contexts/IBConnectionContext';
 
 export default function HomePage() {
-  const { isLiveTrading, setIsLiveTrading } = useTradingAccount();
+  const { isConnected, isLiveTrading } = useIBConnection();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -122,13 +121,39 @@ export default function HomePage() {
           </a>
         </div>
 
-        {/* Trading Account Mode Section */}
-        <div className="mb-6 sm:mb-8 lg:mb-10">
-          <TradingAccountSwitch
-            isLiveTrading={isLiveTrading}
-            onToggle={setIsLiveTrading}
-          />
-        </div>
+        {/* Connection Status Info Banner - Only shown when connected */}
+        {isConnected && (
+          <div className={`mb-6 sm:mb-8 lg:mb-10 p-4 rounded-lg border-l-4 ${
+            isLiveTrading 
+              ? 'bg-red-50 border-red-500' 
+              : 'bg-blue-50 border-blue-500'
+          }`}>
+            <div className="flex items-start space-x-3">
+              <div className={`text-lg ${isLiveTrading ? 'text-red-600' : 'text-blue-600'}`}>
+                {isLiveTrading ? '⚠️' : '📊'}
+              </div>
+              <div className="flex-1">
+                <h4 className={`font-medium mb-1 ${isLiveTrading ? 'text-red-900' : 'text-blue-900'}`}>
+                  {isLiveTrading ? 'Live Trading Mode' : 'Paper Trading Mode'}
+                </h4>
+                <p className={`text-sm ${isLiveTrading ? 'text-red-700' : 'text-blue-700'}`}>
+                  {isLiveTrading 
+                    ? 'You are connected to a LIVE trading account. All trades use real money.'
+                    : 'You are connected to a paper trading account. Trades are simulated.'
+                  }
+                </p>
+                <a 
+                  href="/connections" 
+                  className={`inline-block mt-2 text-sm underline ${
+                    isLiveTrading ? 'text-red-600 hover:text-red-800' : 'text-blue-600 hover:text-blue-800'
+                  }`}
+                >
+                  Manage connections →
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Market Data Search Section */}
         <div className="mb-6 sm:mb-8 lg:mb-10">
@@ -145,4 +170,4 @@ export default function HomePage() {
       </main>
     </div>
   );
-} 
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import { getApiUrl } from '../utils/apiConfig';
 
 interface ContractResult {
@@ -52,7 +52,9 @@ export default function SymbolSelector({
   onContractSelect,
   disabled = false
 }: SymbolSelectorProps) {
-  const { accountMode } = useTradingAccount();
+  const { accountMode } = useIBConnection();
+  // Use 'paper' as safe default if account mode is unknown
+  const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
   const [symbol, setSymbol] = useState('');
   const [searchResults, setSearchResults] = useState<ContractResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -113,7 +115,7 @@ export default function SymbolSelector({
           exchange: params.exchange,
           currency: params.currency,
           searchByName: false,
-          account_mode: accountMode
+          account_mode: effectiveAccountMode
         }),
       });
 

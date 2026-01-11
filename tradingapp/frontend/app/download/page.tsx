@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import DataSwitch from '../components/DataSwitch';
 import DataframeViewer from '../components/DataframeViewer';
 import BackToHome from '../components/BackToHome';
@@ -9,6 +9,7 @@ import DatabaseConnectivityTest from '../components/DatabaseConnectivityTest';
 import DownloadConfigPanel, { DownloadConfig } from '../components/DownloadConfigPanel';
 import DownloadActionButtons, { DownloadStatus as DownloadActionStatus } from '../components/DownloadActionButtons';
 import DownloadDataViewer from '../components/DownloadDataViewer';
+import ConnectionStatusIndicator from '../components/ConnectionStatusIndicator';
 import { createDataResetFunctions, processHistoricalDataBars, validateDownloadConfig } from '../utils/downloadDataManager';
 import { getApiUrl } from '../utils/apiConfig';
 
@@ -67,7 +68,9 @@ interface HealthStatus {
 
 
 export default function DownloadPage() {
-  const { isLiveTrading, accountMode, dataType } = useTradingAccount();
+  const { isLiveTrading, accountMode } = useIBConnection();
+  // Use 'paper' as safe default if account mode is unknown
+  const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
   
   // Centralized configuration state
   const [config, setConfig] = useState<DownloadConfig>({
@@ -266,7 +269,7 @@ export default function DownloadPage() {
         symbol: config.exchangeFilters.symbol,
         timeframe: config.timeframe || '1hour',
         period: config.periodFilters.useDateRange ? 'CUSTOM' : config.periodFilters.period,
-        account_mode: accountMode,
+        account_mode: effectiveAccountMode,
         secType: config.exchangeFilters.secType,
         exchange: config.exchangeFilters.exchange,
         currency: config.exchangeFilters.currency
@@ -571,7 +574,7 @@ export default function DownloadPage() {
         },
           body: JSON.stringify({
             bulkData: bulkData,
-            account_mode: accountMode,
+            account_mode: effectiveAccountMode,
             secType: config.exchangeFilters.secType,
             exchange: config.exchangeFilters.exchange,
             currency: config.exchangeFilters.currency
@@ -653,7 +656,7 @@ export default function DownloadPage() {
         bars: normalizedBars,
         source: timeframeResult.source || 'IB Gateway',
         count: normalizedBars.length,
-        account_mode: accountMode,
+        account_mode: effectiveAccountMode,
         last_updated: new Date().toISOString()
       };
 
@@ -675,7 +678,7 @@ export default function DownloadPage() {
       setError(null);
       setBulkDisplayData(null); // Clear previous data
       
-      const response = await fetch(`/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1Y&account_mode=${accountMode}`, {
+      const response = await fetch(`/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1Y&account_mode=${effectiveAccountMode}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -783,7 +786,7 @@ export default function DownloadPage() {
           period: config.periodFilters.useDateRange ? 'CUSTOM' : config.periodFilters.period,
           start_date: config.periodFilters.startDate,
           end_date: config.periodFilters.endDate,
-          account_mode: accountMode,
+          account_mode: effectiveAccountMode,
           secType: config.exchangeFilters.secType,
           exchange: config.exchangeFilters.exchange,
           currency: config.exchangeFilters.currency
@@ -913,7 +916,7 @@ export default function DownloadPage() {
       // Use dynamic API URL that auto-detects correct backend address
       const apiUrl = getApiUrl();
 
-      const response = await fetch(`${apiUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1M&account_mode=${accountMode}`, {
+      const response = await fetch(`${apiUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=1M&account_mode=${effectiveAccountMode}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -1086,9 +1089,7 @@ export default function DownloadPage() {
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="text-xs sm:text-sm text-gray-500">
-                {isLiveTrading ? 'Live Trading Mode' : 'Paper Trading Mode'}
-              </div>
+              <ConnectionStatusIndicator showDetails={true} />
               {healthStatus && (
                 <div className={`text-xs sm:text-sm px-2 py-1 rounded ${
                   healthStatus.healthy ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import EnhancedTradingChart from './EnhancedTradingChart';
-import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import { getApiUrl } from '../utils/apiConfig';
 import {
   REGIONS,
@@ -111,7 +111,8 @@ const POPULAR_SYMBOLS = [
 // =============================================================================
 
 export default function MarketDataFilter() {
-  const { accountMode, dataType } = useTradingAccount();
+  const { accountMode, isLiveTrading, isConnected } = useIBConnection();
+  const dataType = isLiveTrading ? 'real-time' : 'delayed';
   
   // Region and country state
   const [region, setRegion] = useState('AMERICAS');
@@ -140,9 +141,6 @@ export default function MarketDataFilter() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(false);
-
-  // Connection status
-  const [connectionStatus, setConnectionStatus] = useState('Checking...');
   
   // Search history
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -183,10 +181,6 @@ export default function MarketDataFilter() {
   // EFFECTS
   // =============================================================================
 
-  useEffect(() => {
-    checkConnection();
-  }, []);
-
   // Auto-trigger search when autoSearchTrigger changes
   useEffect(() => {
     if (autoSearchTrigger && symbol === autoSearchTrigger) {
@@ -198,25 +192,6 @@ export default function MarketDataFilter() {
   // =============================================================================
   // HANDLERS
   // =============================================================================
-
-  const checkConnection = async () => {
-    try {
-      // Use dynamic API URL that auto-detects correct backend address
-      const backendUrl = getApiUrl();
-      if (!backendUrl) {
-        setConnectionStatus('Error');
-        return;
-      }
-      const response = await fetch(`${backendUrl}/api/health`);
-      if (response.ok) {
-        setConnectionStatus('Connected');
-      } else {
-        setConnectionStatus('Error');
-      }
-    } catch (error) {
-      setConnectionStatus('Disconnected');
-    }
-  };
 
   // Handle region change
   const handleRegionChange = (newRegion: string) => {
@@ -294,6 +269,9 @@ export default function MarketDataFilter() {
 
       const endpoint = showAdvancedSearch ? '/api/market-data/advanced-search' : '/api/market-data/search';
       
+      // Use 'paper' as safe default if account mode is unknown
+      const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
+      
       const searchPayload = showAdvancedSearch ? {
         symbol: symbol.trim().toUpperCase() || '',
         secType: securityType,
@@ -305,14 +283,14 @@ export default function MarketDataFilter() {
         multiplier: multiplier,
         includeExpired: includeExpired,
         searchByName: searchByName,
-        account_mode: accountMode
+        account_mode: effectiveAccountMode
       } : {
         symbol: symbol.trim().toUpperCase(),
         secType: securityType,
         exchange: exchange,
         currency: currency,
         searchByName: searchByName,
-        account_mode: accountMode
+        account_mode: effectiveAccountMode
       };
 
       const response = await fetch(`${backendUrl}${endpoint}`, {
@@ -356,8 +334,10 @@ export default function MarketDataFilter() {
     try {
       // Use dynamic API URL that auto-detects correct backend address
       const backendUrl = getApiUrl();
+      // Use 'paper' as safe default if account mode is unknown
+      const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
       const response = await fetch(
-        `${backendUrl}/api/market-data/realtime?symbol=${contract.symbol}&conid=${contract.conid}&account_mode=${accountMode}`,
+        `${backendUrl}/api/market-data/realtime?symbol=${contract.symbol}&conid=${contract.conid}&account_mode=${effectiveAccountMode}`,
         {
           headers: {
             'X-Data-Query-Enabled': 'true',
@@ -409,35 +389,6 @@ export default function MarketDataFilter() {
 
   return (
     <div className="space-y-6">
-      {/* Connection Status */}
-      <div className="bg-white rounded-lg shadow-sm border p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                connectionStatus === 'Connected' ? 'bg-green-500' : 
-                connectionStatus === 'Checking...' ? 'bg-yellow-500' : 'bg-red-500'
-              }`}></div>
-              <span className="text-xs sm:text-sm font-medium">{connectionStatus}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                accountMode === 'live' ? 'bg-red-500' : 'bg-green-500'
-              }`}></div>
-              <span className="text-xs sm:text-sm font-medium">
-                {accountMode.toUpperCase()} Mode • {dataType === 'real-time' ? 'Live Data' : 'Delayed Data'}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={checkConnection}
-            className="text-gray-400 hover:text-gray-600 text-xs sm:text-sm self-start sm:self-auto"
-          >
-            ↻ Refresh
-          </button>
-        </div>
-      </div>
-
       {/* Quick Search */}
       <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6 mb-6">
         <div className="flex items-center space-x-2 mb-4">

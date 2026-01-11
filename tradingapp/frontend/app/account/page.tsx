@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import DataSwitch from '../components/DataSwitch';
 import BackToHome from '../components/BackToHome';
 import DataframeViewer from '../components/DataframeViewer';
+import ConnectionStatusIndicator from '../components/ConnectionStatusIndicator';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import { getApiUrl } from '../utils/apiConfig';
 
 interface ConnectionStatus {
@@ -56,6 +58,9 @@ interface AccountData {
 }
 
 export default function AccountPage() {
+  // IB Connection context for global connection status
+  const ibConnection = useIBConnection();
+  
   const [activeTab, setActiveTab] = useState('account');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [accountData, setAccountData] = useState<AccountData | null>(null);
@@ -532,69 +537,100 @@ export default function AccountPage() {
     </div>
   );
 
-  const renderConnectionTab = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">IB Gateway Connection</h3>
-        
-        {connectionStatus && (
+  const renderConnectionTab = () => {
+    // Use the IB connection context for consistent connection status
+    const { connectionStatus: ibStatus, activeProfile, isConnected, accountMode, connectionType, refresh } = ibConnection;
+    
+    return (
+      <div className="space-y-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-4">IB Gateway Connection</h3>
+          
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className={`w-4 h-4 rounded-full ${connectionStatus.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <div className={`w-4 h-4 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
               <span className="font-medium text-lg">
-                {connectionStatus.connected ? 'Connected' : 'Disconnected'}
+                {isConnected ? 'Connected' : 'Disconnected'}
               </span>
+              {isConnected && (
+                <span className={`px-2 py-1 text-xs rounded ${
+                  accountMode === 'live' 
+                    ? 'bg-red-100 text-red-700 border border-red-300' 
+                    : 'bg-blue-100 text-blue-700 border border-blue-300'
+                }`}>
+                  {accountMode.toUpperCase()}
+                </span>
+              )}
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="bg-gray-50 p-3 rounded">
-                <span className="text-gray-600">Host:</span>
-                <span className="ml-2 font-mono">{connectionStatus.host}</span>
+            {ibStatus?.ib_gateway && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="bg-gray-50 p-3 rounded">
+                  <span className="text-gray-600">Host:</span>
+                  <span className="ml-2 font-mono">{ibStatus.ib_gateway.host}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <span className="text-gray-600">Port:</span>
+                  <span className="ml-2 font-mono">{ibStatus.ib_gateway.port}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <span className="text-gray-600">Client ID:</span>
+                  <span className="ml-2 font-mono">{ibStatus.ib_gateway.client_id}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <span className="text-gray-600">Connection Type:</span>
+                  <span className="ml-2 font-mono">{connectionType === 'tws' ? 'TWS' : 'Gateway'}</span>
+                </div>
               </div>
-              <div className="bg-gray-50 p-3 rounded">
-                <span className="text-gray-600">Port:</span>
-                <span className="ml-2 font-mono">{connectionStatus.port}</span>
-              </div>
-              <div className="bg-gray-50 p-3 rounded">
-                <span className="text-gray-600">Client ID:</span>
-                <span className="ml-2 font-mono">{connectionStatus.client_id}</span>
-              </div>
-              <div className="bg-gray-50 p-3 rounded">
-                <span className="text-gray-600">Connections:</span>
-                <span className="ml-2 font-mono">{connectionStatus.connection_count}</span>
-              </div>
-            </div>
+            )}
 
-            {connectionStatus.last_connected && (
-              <div className="bg-green-50 p-3 rounded border border-green-200">
-                <span className="text-green-700 text-sm">
-                  Last connected: {new Date(connectionStatus.last_connected).toLocaleString()}
+            {activeProfile && (
+              <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                <span className="text-blue-700 text-sm">
+                  <strong>Active Profile:</strong> {activeProfile.name}
+                  {activeProfile.description && ` - ${activeProfile.description}`}
                 </span>
               </div>
             )}
 
-            {connectionStatus.last_error && (
+            {activeProfile?.last_connected_at && (
+              <div className="bg-green-50 p-3 rounded border border-green-200">
+                <span className="text-green-700 text-sm">
+                  Last connected: {new Date(activeProfile.last_connected_at).toLocaleString()}
+                </span>
+              </div>
+            )}
+
+            {ibStatus?.ib_gateway?.last_error && (
               <div className="bg-red-50 p-3 rounded border border-red-200">
-                <span className="text-red-700 text-sm">{connectionStatus.last_error}</span>
+                <span className="text-red-700 text-sm">{ibStatus.ib_gateway.last_error}</span>
               </div>
             )}
           </div>
-        )}
 
-        <div className="mt-4 space-y-3">
-          <button
-            onClick={handleConnectionCheck}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Check Connection Status
-          </button>
-          <div className="text-sm text-gray-600">
-            💡 Connection status is now checked manually to prevent automatic IB Gateway queries
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-3">
+              <button
+                onClick={() => refresh()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Refresh Status
+              </button>
+              <a
+                href="/connections"
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Manage Connections
+              </a>
+            </div>
+            <div className="text-sm text-gray-600">
+              💡 Use the IB Connections page to switch between profiles or configure new connections.
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -610,9 +646,7 @@ export default function AccountPage() {
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="text-xs sm:text-sm text-gray-500">
-                Connected to IB Gateway
-              </div>
+              <ConnectionStatusIndicator showDetails={true} />
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight
 import DataSwitch from './DataSwitch';
 import IndicatorSelector from './IndicatorSelector';
 import DataframeViewer from './DataframeViewer';
-import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import { getApiUrl } from '../utils/apiConfig';
 
 interface RealtimeData {
@@ -57,7 +57,10 @@ const timeframes = [
 ];
 
 export default function MSFTRealtimeChart() {
-  const { accountMode, dataType } = useTradingAccount();
+  const { accountMode, isLiveTrading } = useIBConnection();
+  // Use 'paper' as safe default if account mode is unknown
+  const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
+  const dataType = isLiveTrading ? 'real-time' : 'delayed';
   
   // Simple periods array - always fresh
   const periods = [
@@ -350,7 +353,7 @@ export default function MSFTRealtimeChart() {
       const apiUrl = getApiUrl();
 
       // Simple query building
-      let url = `${apiUrl}/api/market-data/history?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${accountMode}`;
+      let url = `${apiUrl}/api/market-data/history?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${effectiveAccountMode}`;
       
       if (useCustomDateRange && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
@@ -489,7 +492,7 @@ export default function MSFTRealtimeChart() {
       // Use dynamic API URL that auto-detects correct backend address
       const apiUrl = getApiUrl();
 
-      const response = await fetch(`${apiUrl}/api/market-data/stream?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${accountMode}`, {
+      const response = await fetch(`${apiUrl}/api/market-data/stream?symbol=MSFT&timeframe=${currentTimeframe}&account_mode=${effectiveAccountMode}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -612,7 +615,7 @@ export default function MSFTRealtimeChart() {
       // Use dynamic API URL that auto-detects correct backend address
       const apiUrl = getApiUrl();
 
-      const response = await fetch(`${apiUrl}/api/market-data/realtime?symbol=MSFT&account_mode=${accountMode}`, {
+      const response = await fetch(`${apiUrl}/api/market-data/realtime?symbol=MSFT&account_mode=${effectiveAccountMode}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTradingAccount } from '../contexts/TradingAccountContext';
+import { useIBConnection } from '../contexts/IBConnectionContext';
 import DataSwitch from '../components/DataSwitch';
 import HistoricalChart from '../components/HistoricalChart';
 import BackToHome from '../components/BackToHome';
 import ExchangeDrivenFilters from '../components/ExchangeDrivenFilters';
 import PeriodDateFilters from '../components/PeriodDateFilters';
 import TechnicalIndicatorsFilter from '../components/TechnicalIndicatorsFilter';
+import ConnectionStatusIndicator from '../components/ConnectionStatusIndicator';
 import { getApiUrl } from '../utils/apiConfig';
 
 interface HistoricalData {
@@ -30,7 +31,9 @@ interface ProcessedBar {
 }
 
 export default function HistoricalChartPage() {
-  const { isLiveTrading, accountMode, dataType } = useTradingAccount();
+  const { isLiveTrading, accountMode } = useIBConnection();
+  // Use 'paper' as safe default if account mode is unknown
+  const effectiveAccountMode = accountMode === 'unknown' ? 'paper' : accountMode;
   
   // Enhanced filter state
   const [exchangeFilters, setExchangeFilters] = useState({
@@ -114,7 +117,7 @@ export default function HistoricalChartPage() {
           secType: exchangeFilters.secType,
           exchange: exchangeFilters.exchange,
           currency: exchangeFilters.currency,
-          account_mode: accountMode
+          account_mode: effectiveAccountMode
         })
       });
 
@@ -251,7 +254,7 @@ export default function HistoricalChartPage() {
         symbol: exchangeFilters.symbol,
         timeframe: timeframe,
         period: periodFilters.useDateRange ? 'CUSTOM' : periodFilters.period,
-        account_mode: accountMode,
+        account_mode: effectiveAccountMode,
         secType: exchangeFilters.secType,
         exchange: exchangeFilters.exchange,
         currency: exchangeFilters.currency
@@ -387,9 +390,7 @@ export default function HistoricalChartPage() {
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="text-xs sm:text-sm text-gray-500">
-                {isLiveTrading ? 'Live Trading Mode' : 'Paper Trading Mode'}
-              </div>
+              <ConnectionStatusIndicator showDetails={true} />
             </div>
           </div>
         </div>
