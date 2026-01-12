@@ -16,6 +16,7 @@ export interface IBConnectionProfile {
   timeout_seconds: number;
   auto_reconnect: boolean;
   max_retry_attempts: number;
+  keep_alive_interval_minutes: number;
   timezone: string;
   is_active: boolean;
   is_default: boolean;

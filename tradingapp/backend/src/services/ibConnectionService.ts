@@ -14,6 +14,7 @@ export interface IBConnectionProfile {
   timeout_seconds: number;
   auto_reconnect: boolean;
   max_retry_attempts: number;
+  keep_alive_interval_minutes: number;
   timezone: string;
   date_format: string;
   time_format: string;
@@ -34,7 +35,9 @@ export type ConnectionEventType =
   | 'disconnect'
   | 'reconnect'
   | 'timeout'
-  | 'error';
+  | 'error'
+  | 'keep_alive'
+  | 'keep_alive_reconnect';
 
 // Connection history entry
 export interface ConnectionHistoryEntry {
@@ -110,9 +113,9 @@ class IBConnectionService {
     const result = await dbService.query(`
       INSERT INTO ib_connection_profiles (
         name, description, connection_type, account_mode, host, port, client_id,
-        timeout_seconds, auto_reconnect, max_retry_attempts, timezone, date_format,
-        time_format, is_active, is_default
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        timeout_seconds, auto_reconnect, max_retry_attempts, keep_alive_interval_minutes,
+        timezone, date_format, time_format, is_active, is_default
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       profile.name,
@@ -125,6 +128,7 @@ class IBConnectionService {
       profile.timeout_seconds || 15,
       profile.auto_reconnect !== false,
       profile.max_retry_attempts || 3,
+      profile.keep_alive_interval_minutes ?? 15,
       profile.timezone || 'UTC',
       profile.date_format || 'YYYYMMDD',
       profile.time_format || 'HHMMSS',
@@ -139,7 +143,8 @@ class IBConnectionService {
     const allowedFields = [
       'name', 'description', 'connection_type', 'account_mode', 'host', 'port',
       'client_id', 'timeout_seconds', 'auto_reconnect', 'max_retry_attempts',
-      'timezone', 'date_format', 'time_format', 'is_active', 'is_default'
+      'keep_alive_interval_minutes', 'timezone', 'date_format', 'time_format', 
+      'is_active', 'is_default'
     ];
 
     const updateFields: string[] = [];
@@ -444,6 +449,136 @@ class IBConnectionService {
       [profileId]
     );
     return result.rowCount ?? 0;
+  }
+
+  // Keep-alive: Check and maintain connection health
+  async performKeepAlive(): Promise<{
+    checked: boolean;
+    wasConnected: boolean;
+    isConnected: boolean;
+    reconnectAttempted: boolean;
+    reconnectSucceeded: boolean;
+    profile: IBConnectionProfile | null;
+    message: string;
+  }> {
+    const result = {
+      checked: false,
+      wasConnected: false,
+      isConnected: false,
+      reconnectAttempted: false,
+      reconnectSucceeded: false,
+      profile: null as IBConnectionProfile | null,
+      message: ''
+    };
+
+    try {
+      // Get active profile
+      const activeProfile = await this.getActiveProfile();
+      
+      if (!activeProfile) {
+        result.message = 'No active profile to keep alive';
+        return result;
+      }
+
+      result.profile = activeProfile;
+      result.checked = true;
+
+      // Check if keep-alive is enabled for this profile
+      if (activeProfile.keep_alive_interval_minutes <= 0) {
+        result.message = 'Keep-alive disabled for this profile';
+        return result;
+      }
+
+      // Get current connection status
+      const status = await this.getConnectionStatus();
+      result.wasConnected = status.connected;
+      result.isConnected = status.connected;
+
+      if (status.connected) {
+        // Connection is healthy, log keep-alive success
+        await this.logConnectionEvent(activeProfile.id!, 'keep_alive', {
+          status: 'healthy',
+          host: status.ib_gateway?.host,
+          port: status.ib_gateway?.port
+        });
+        result.message = 'Connection is healthy';
+        return result;
+      }
+
+      // Connection is down - check if auto_reconnect is enabled
+      if (!activeProfile.auto_reconnect) {
+        await this.logConnectionEvent(activeProfile.id!, 'keep_alive', {
+          status: 'disconnected',
+          auto_reconnect: false
+        });
+        result.message = 'Connection is down, auto-reconnect disabled';
+        return result;
+      }
+
+      // Attempt to reconnect
+      console.log(`[Keep-Alive] Connection lost, attempting reconnect for profile: ${activeProfile.name}`);
+      result.reconnectAttempted = true;
+
+      await this.logConnectionEvent(activeProfile.id!, 'keep_alive_reconnect', {
+        status: 'reconnect_attempt',
+        reason: 'connection_lost'
+      });
+
+      try {
+        await this.connectToIBService(activeProfile);
+        
+        // Update last connected timestamp
+        await dbService.query(`
+          UPDATE ib_connection_profiles 
+          SET last_connected_at = NOW(), 
+              last_error = NULL,
+              connection_count = connection_count + 1
+          WHERE id = $1
+        `, [activeProfile.id]);
+
+        await this.logConnectionEvent(activeProfile.id!, 'reconnect', {
+          status: 'success',
+          triggered_by: 'keep_alive'
+        });
+
+        result.reconnectSucceeded = true;
+        result.isConnected = true;
+        result.message = 'Successfully reconnected';
+        console.log(`[Keep-Alive] Reconnect successful for profile: ${activeProfile.name}`);
+      } catch (reconnectError: any) {
+        // Update with error
+        await dbService.query(`
+          UPDATE ib_connection_profiles 
+          SET last_error = $1
+          WHERE id = $2
+        `, [reconnectError.message, activeProfile.id]);
+
+        await this.logConnectionEvent(
+          activeProfile.id!, 
+          'connect_failure', 
+          { triggered_by: 'keep_alive' },
+          reconnectError.message
+        );
+
+        result.message = `Reconnect failed: ${reconnectError.message}`;
+        console.error(`[Keep-Alive] Reconnect failed for profile ${activeProfile.name}:`, reconnectError.message);
+      }
+
+      return result;
+    } catch (error: any) {
+      result.message = `Keep-alive error: ${error.message}`;
+      console.error('[Keep-Alive] Error:', error);
+      return result;
+    }
+  }
+
+  // Get the keep-alive interval for the active profile (in milliseconds)
+  async getKeepAliveIntervalMs(): Promise<number> {
+    const activeProfile = await this.getActiveProfile();
+    if (!activeProfile || activeProfile.keep_alive_interval_minutes <= 0) {
+      return 0; // Disabled
+    }
+    return activeProfile.keep_alive_interval_minutes * 60 * 1000;
   }
 }
 

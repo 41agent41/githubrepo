@@ -1,12 +1,17 @@
 import { marketDataCollector } from './marketDataCollector.js';
 import { strategyService } from './strategyService.js';
 import { tradingSetupService } from './tradingSetupService.js';
+import { ibConnectionService } from './ibConnectionService.js';
 
 // Simple in-memory job scheduler
 // In production, consider using node-cron or a proper job queue
 
 let dataCollectionInterval: NodeJS.Timeout | null = null;
 let strategyCalculationInterval: NodeJS.Timeout | null = null;
+let keepAliveInterval: NodeJS.Timeout | null = null;
+
+// Default keep-alive interval (15 minutes in milliseconds)
+const DEFAULT_KEEP_ALIVE_INTERVAL_MS = 15 * 60 * 1000;
 
 export const backgroundJobs = {
   /**
@@ -114,11 +119,68 @@ export const backgroundJobs = {
   },
 
   /**
+   * Start IB connection keep-alive job
+   * Checks connection health and reconnects if needed (default: every 15 minutes)
+   */
+  startKeepAlive(): void {
+    if (keepAliveInterval) {
+      console.log('Keep-alive job already running');
+      return;
+    }
+
+    console.log('Starting IB connection keep-alive job...');
+
+    // Run first check after a short delay (30 seconds) to allow initial connection
+    setTimeout(() => {
+      this.runKeepAlive();
+    }, 30 * 1000);
+
+    // Then run at the default interval (will be adjusted based on profile settings)
+    keepAliveInterval = setInterval(() => {
+      this.runKeepAlive();
+    }, DEFAULT_KEEP_ALIVE_INTERVAL_MS);
+
+    console.log(`Keep-alive job started (runs every ${DEFAULT_KEEP_ALIVE_INTERVAL_MS / 60000} minutes)`);
+  },
+
+  /**
+   * Stop IB connection keep-alive job
+   */
+  stopKeepAlive(): void {
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+      console.log('Keep-alive job stopped');
+    }
+  },
+
+  /**
+   * Run keep-alive check for active IB connection
+   */
+  async runKeepAlive(): Promise<void> {
+    try {
+      const result = await ibConnectionService.performKeepAlive();
+      
+      if (result.checked) {
+        if (result.reconnectAttempted) {
+          console.log(`[Keep-Alive] ${result.message} for profile: ${result.profile?.name}`);
+        } else if (result.isConnected) {
+          // Only log occasionally for healthy connections to reduce noise
+          console.log(`[Keep-Alive] Connection healthy for profile: ${result.profile?.name}`);
+        }
+      }
+    } catch (error) {
+      console.error('[Keep-Alive] Error running keep-alive check:', error);
+    }
+  },
+
+  /**
    * Start all background jobs
    */
   startAll(): void {
     this.startDataCollection();
     this.startStrategyCalculation();
+    this.startKeepAlive();
     console.log('All background jobs started');
   },
 
@@ -128,6 +190,7 @@ export const backgroundJobs = {
   stopAll(): void {
     this.stopDataCollection();
     this.stopStrategyCalculation();
+    this.stopKeepAlive();
     console.log('All background jobs stopped');
   }
 };

@@ -621,5 +621,57 @@ router.post('/disconnect', async (req: Request, res: Response) => {
   }
 });
 
+// Trigger keep-alive check manually
+router.post('/keep-alive', async (req: Request, res: Response) => {
+  try {
+    const result = await ibConnectionService.performKeepAlive();
+
+    res.json({
+      ...result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error running keep-alive:', error);
+    res.status(500).json({
+      error: 'Failed to run keep-alive check',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Get keep-alive status for active profile
+router.get('/keep-alive/status', async (req: Request, res: Response) => {
+  try {
+    const activeProfile = await ibConnectionService.getActiveProfile();
+    
+    if (!activeProfile) {
+      return res.json({
+        enabled: false,
+        profile: null,
+        interval_minutes: 0,
+        message: 'No active profile',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      enabled: activeProfile.keep_alive_interval_minutes > 0,
+      profile_id: activeProfile.id,
+      profile_name: activeProfile.name,
+      interval_minutes: activeProfile.keep_alive_interval_minutes,
+      auto_reconnect: activeProfile.auto_reconnect,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error getting keep-alive status:', error);
+    res.status(500).json({
+      error: 'Failed to get keep-alive status',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 export default router;
 
