@@ -155,15 +155,33 @@ export default function WorkingChartPage() {
         }
 
         const data = await response.json();
-        console.log('Data received:', {
-          barsCount: data.bars?.length || 0,
-          firstBar: data.bars?.[0],
-          lastBar: data.bars?.[data.bars?.length - 1]
-        });
+        console.log('=== RAW API RESPONSE ===');
+        console.log('Full response:', data);
+        console.log('Bars count:', data.bars?.length || 0);
+        console.log('First 3 bars (RAW):', data.bars?.slice(0, 3));
+        console.log('Last 3 bars (RAW):', data.bars?.slice(-3));
 
         if (!data.bars || data.bars.length === 0) {
           throw new Error('No data received from API');
         }
+
+        // Check for null values in first bar
+        const firstBar = data.bars[0];
+        console.log('First bar detailed check:', {
+          bar: firstBar,
+          open: firstBar?.open,
+          high: firstBar?.high,
+          low: firstBar?.low,
+          close: firstBar?.close,
+          timestamp: firstBar?.timestamp,
+          hasNulls: [
+            firstBar?.open === null ? 'open is null' : null,
+            firstBar?.high === null ? 'high is null' : null,
+            firstBar?.low === null ? 'low is null' : null,
+            firstBar?.close === null ? 'close is null' : null,
+            firstBar?.timestamp === null ? 'timestamp is null' : null,
+          ].filter(Boolean)
+        });
 
         // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
