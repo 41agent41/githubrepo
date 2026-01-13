@@ -54,7 +54,8 @@ services:
     build: ./ib_service
     env_file: .env
     environment:
-      - IB_HOST=${IB_HOST}
+      # IB Gateway connection is now configured via browser UI at /connections
+      # These env vars are only used as fallback defaults if not configured in browser
       - IB_PORT=${IB_PORT:-4002}
       - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
       - IB_TIMEOUT=${IB_TIMEOUT:-30}

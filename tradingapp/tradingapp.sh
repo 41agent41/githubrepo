@@ -18,10 +18,7 @@ print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
 # Configuration
-DEFAULT_IB_HOST="10.7.3.21"
 DEFAULT_SERVER_IP="10.7.3.20"
-DEFAULT_IB_PORT="4002"
-DEFAULT_CLIENT_ID="1"
 
 show_usage() {
     echo "🚀 TradingApp Unified Management Script"
@@ -114,17 +111,11 @@ setup_environment() {
         fi
     fi
     
-    # Get IB Gateway IP
-    if [[ -z "$IB_HOST" ]]; then
-        echo ""
-        print_info "Please enter your IB Gateway IP address:"
-        read -p "IB Gateway IP [$DEFAULT_IB_HOST]: " IB_HOST
-        IB_HOST=${IB_HOST:-$DEFAULT_IB_HOST}
-    fi
-    
     # Create streamlined .env file
+    # Note: IB Gateway connections are now configured via browser UI at /connections
     cat > .env << EOF
 # TradingApp Configuration
+# IB Gateway connections are configured via browser at: http://$SERVER_IP:3000/connections
 NODE_ENV=production
 SERVER_IP=$SERVER_IP
 
@@ -138,10 +129,6 @@ CORS_ORIGINS=http://$SERVER_IP:3000
 
 # IB Service
 IB_SERVICE_PORT=8000
-IB_HOST=$IB_HOST
-IB_PORT=$DEFAULT_IB_PORT
-IB_CLIENT_ID=$DEFAULT_CLIENT_ID
-IB_TIMEOUT=30
 
 # Database
 POSTGRES_USER=tradingapp
@@ -155,8 +142,9 @@ EOF
     
     print_status "Environment configured:"
     print_info "  Server IP: $SERVER_IP"
-    print_info "  IB Gateway: $IB_HOST:$DEFAULT_IB_PORT"
-    print_info "  Client ID: $DEFAULT_CLIENT_ID"
+    print_info "  Frontend: http://$SERVER_IP:3000"
+    print_info "  Backend: http://$SERVER_IP:4000"
+    print_info "  IB Connections: Configure via http://$SERVER_IP:3000/connections"
 }
 
 test_ib_connection() {
@@ -319,13 +307,13 @@ run_diagnostics() {
     if [[ -f .env ]]; then
         print_status ".env file exists"
         echo "Configuration:"
-        grep -E "^(SERVER_IP|IB_HOST|IB_PORT|IB_CLIENT_ID)=" .env | sed 's/^/  /'
+        grep -E "^(SERVER_IP|FRONTEND_PORT|BACKEND_PORT|IB_SERVICE_PORT)=" .env | sed 's/^/  /'
     else
         print_error ".env file missing"
     fi
     
     echo ""
-    echo "=== Network Tests ==="
+    echo "=== IB Connection Status ==="
     test_ib_connection
     
     echo ""
