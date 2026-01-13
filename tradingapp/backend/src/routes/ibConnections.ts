@@ -157,6 +157,7 @@ router.post('/profiles', async (req: Request, res: Response) => {
       timeout_seconds: timeout_seconds || 15,
       auto_reconnect: auto_reconnect !== false,
       max_retry_attempts: max_retry_attempts || 3,
+      keep_alive_interval_minutes: req.body.keep_alive_interval_minutes ?? 15,
       timezone: timezone || 'UTC',
       date_format: date_format || 'YYYYMMDD',
       time_format: time_format || 'HHMMSS',
@@ -441,6 +442,7 @@ router.post('/test', async (req: Request, res: Response) => {
       timeout_seconds: timeout_seconds || 15,
       auto_reconnect: false,
       max_retry_attempts: 1,
+      keep_alive_interval_minutes: 0, // Disabled for test connections
       timezone: 'UTC',
       date_format: 'YYYYMMDD',
       time_format: 'HHMMSS',
