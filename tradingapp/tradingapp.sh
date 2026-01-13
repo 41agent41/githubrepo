@@ -160,40 +160,42 @@ EOF
 }
 
 test_ib_connection() {
-    print_info "Testing IB Gateway connection..."
+    print_info "Testing IB Gateway connection via Connection Manager..."
     
+    # Get server IP from .env or default
+    local server_ip="${SERVER_IP:-localhost}"
     if [[ -f .env ]]; then
         source .env
-        
-        # Test basic network connectivity first
-        print_info "Testing network connectivity to $IB_HOST..."
-        if ping -c 1 -W 3 "$IB_HOST" > /dev/null 2>&1; then
-            print_status "Host $IB_HOST is reachable"
-        else
-            print_error "Host $IB_HOST is not reachable via ping"
-            print_warning "Check network connectivity and firewall settings"
-            return 1
-        fi
-        
-        # Test TCP connection to IB Gateway port
-        print_info "Testing IB Gateway port $IB_HOST:$IB_PORT..."
-        if timeout 5 bash -c "echo >/dev/tcp/$IB_HOST/$IB_PORT" 2>/dev/null; then
-            print_status "IB Gateway is reachable at $IB_HOST:$IB_PORT"
-            return 0
-        else
-            print_error "Cannot reach IB Gateway at $IB_HOST:$IB_PORT"
-            print_warning "IB Gateway troubleshooting needed:"
-            echo "  1. Ensure IB Gateway/TWS is running on $IB_HOST"
-            echo "  2. Check API settings: File → Global Configuration → API → Settings"
-            echo "  3. Verify 'Enable ActiveX and Socket Clients' is checked"
-            echo "  4. Confirm socket port is set to $IB_PORT"
-            echo "  5. Add $SERVER_IP to trusted IPs list"
-            echo "  6. Restart IB Gateway after configuration changes"
-            return 1
-        fi
+        server_ip="${SERVER_IP:-localhost}"
+    fi
+    
+    # Query the backend API for IB connection status (Connection Manager)
+    local status_response
+    status_response=$(curl -s "http://${server_ip}:4000/api/ib-connections/status" 2>/dev/null)
+    
+    if [[ -z "$status_response" ]]; then
+        print_warning "Could not query IB Connection Manager (backend may still be starting)"
+        print_info "IB connections are managed via the web UI at: http://${server_ip}:3000/connections"
+        return 0  # Non-blocking - connection can be configured via UI
+    fi
+    
+    # Check if connected using the API response
+    local is_connected
+    is_connected=$(echo "$status_response" | grep -o '"connected":[^,}]*' | head -1 | cut -d':' -f2 | tr -d ' ')
+    
+    if [[ "$is_connected" == "true" ]]; then
+        # Extract profile name if available
+        local profile_name
+        profile_name=$(echo "$status_response" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+        print_status "IB Gateway connected via profile: ${profile_name:-unknown}"
+        return 0
     else
-        print_error "No .env file found. Run: $0 env"
-        return 1
+        print_warning "IB Gateway not connected"
+        print_info "Configure IB connections via the web UI at: http://${server_ip}:3000/connections"
+        print_info "  1. Create or edit a connection profile"
+        print_info "  2. Click 'Connect' to activate the profile"
+        print_info "  3. Ensure IB Gateway/TWS is running on the target host"
+        return 0  # Non-blocking - this is expected if IB Gateway isn't running
     fi
 }
 
@@ -261,13 +263,10 @@ test_deployment() {
         success=false
     fi
     
-    # Test IB connection
-    if test_ib_connection; then
-        print_status "IB Gateway connection test passed"
-    else
-        print_warning "IB Gateway connection test failed"
-        success=false
-    fi
+    # Test IB connection (non-blocking - managed via Connection Manager UI)
+    test_ib_connection
+    # Note: IB connection failures don't block deployment
+    # Connections are now managed via the web UI at /connections
     
     if $success; then
         print_status "All tests passed!"
@@ -383,15 +382,22 @@ show_ib_help() {
     echo "=================================="
     echo ""
     
+    local server_ip="${SERVER_IP:-localhost}"
     if [[ -f .env ]]; then
         source .env
-        echo "Current Configuration:"
-        echo "  IB Gateway IP: $IB_HOST"
-        echo "  IB Gateway Port: $IB_PORT"
-        echo "  Trading Server IP: $SERVER_IP"
-        echo "  Client ID: $IB_CLIENT_ID"
-        echo ""
+        server_ip="${SERVER_IP:-localhost}"
     fi
+    
+    echo "📱 IB Connection Manager (Recommended):"
+    echo "   IB connections are now managed via the web UI!"
+    echo "   Visit: http://${server_ip}:3000/connections"
+    echo ""
+    echo "   Features:"
+    echo "   - Create multiple connection profiles (Live/Paper)"
+    echo "   - Switch connections with one click"
+    echo "   - Automatic keep-alive (reconnects if disconnected)"
+    echo "   - Connection history and statistics"
+    echo ""
     
     echo "📋 IB Gateway Setup Checklist:"
     echo ""
@@ -401,17 +407,17 @@ show_ib_help() {
     echo "   - Ensure it's connected (not offline mode)"
     echo ""
     
-    echo "2. ⚙️  Configure API Settings:"
+    echo "2. ⚙️  Configure API Settings in IB Gateway/TWS:"
     echo "   - Go to: File → Global Configuration → API → Settings"
     echo "   - ✅ Check 'Enable ActiveX and Socket Clients'"
-    echo "   - ✅ Set Socket port to: $IB_PORT"
-    echo "   - ✅ Set Master API client ID to: $IB_CLIENT_ID"
+    echo "   - ✅ Set Socket port to: 4002 (paper) or 4001 (live)"
+    echo "   - ✅ Set Master API client ID to: 1"
     echo "   - ✅ Uncheck 'Read-Only API' (if you want to place orders)"
     echo ""
     
-    echo "3. 🌐 Configure Trusted IPs:"
+    echo "3. 🌐 Configure Trusted IPs in IB Gateway/TWS:"
     echo "   - In the same API Settings window"
-    echo "   - Add trusted IP: $SERVER_IP"
+    echo "   - Add trusted IP: ${server_ip}"
     echo "   - Add trusted IP: 127.0.0.1 (localhost)"
     echo "   - Format: one IP per line"
     echo ""
@@ -422,9 +428,11 @@ show_ib_help() {
     echo "   - Wait for it to fully connect to IB servers"
     echo ""
     
-    echo "5. 🧪 Test Connection:"
-    echo "   - Run: ./tradingapp.sh test"
-    echo "   - Look for: ✅ IB Gateway connection test passed"
+    echo "5. 🧪 Connect via Web UI:"
+    echo "   - Go to: http://${server_ip}:3000/connections"
+    echo "   - Create or edit a connection profile"
+    echo "   - Set the host to your IB Gateway machine's IP"
+    echo "   - Click 'Connect' to activate"
     echo ""
     
     echo "📞 Common Issues:"
@@ -435,13 +443,7 @@ show_ib_help() {
     echo "❌ 'Client ID conflict' → Try different client ID (1, 2, 3...)"
     echo ""
     
-    echo "🔧 Quick Tests:"
-    echo "   ping $IB_HOST                    # Test basic connectivity"
-    echo "   nc -zv $IB_HOST $IB_PORT        # Test port accessibility"
-    echo "   ./tradingapp.sh config           # Reconfigure IB settings"
-    echo ""
-    
-    print_status "After configuring IB Gateway, run: ./tradingapp.sh test"
+    print_status "Configure IB connections at: http://${server_ip}:3000/connections"
 }
 
 # Main command handling
