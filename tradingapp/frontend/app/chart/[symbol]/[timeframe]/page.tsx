@@ -169,18 +169,16 @@ export default function WorkingChartPage() {
         const firstBar = data.bars[0];
         console.log('First bar detailed check:', {
           bar: firstBar,
+          hasTime: 'time' in firstBar,
+          hasTimestamp: 'timestamp' in firstBar,
+          time: firstBar?.time,
+          timestamp: firstBar?.timestamp,
           open: firstBar?.open,
           high: firstBar?.high,
           low: firstBar?.low,
           close: firstBar?.close,
-          timestamp: firstBar?.timestamp,
-          hasNulls: [
-            firstBar?.open === null ? 'open is null' : null,
-            firstBar?.high === null ? 'high is null' : null,
-            firstBar?.low === null ? 'low is null' : null,
-            firstBar?.close === null ? 'close is null' : null,
-            firstBar?.timestamp === null ? 'timestamp is null' : null,
-          ].filter(Boolean)
+          volume: firstBar?.volume,
+          allKeys: Object.keys(firstBar || {})
         });
 
         // Format data with STRICT null/undefined checking
@@ -192,14 +190,19 @@ export default function WorkingChartPage() {
             if (bar.high === null || bar.high === undefined) return false;
             if (bar.low === null || bar.low === undefined) return false;
             if (bar.close === null || bar.close === undefined) return false;
-            if (bar.timestamp === null || bar.timestamp === undefined) return false;
+            // Check BOTH time AND timestamp fields (backend inconsistency)
+            if ((bar.timestamp === null || bar.timestamp === undefined) && 
+                (bar.time === null || bar.time === undefined)) return false;
             return true;
           })
           .map((bar: any) => {
-            const timestamp = bar.timestamp || bar.time;
+            // Handle both 'time' (from IB service) and 'timestamp' (from database)
+            const timestamp = bar.time || bar.timestamp;
             const timeValue = typeof timestamp === 'number'
               ? (timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp) as Time
-              : (Math.floor(new Date(timestamp).getTime() / 1000) as Time);
+              : (typeof timestamp === 'string' 
+                  ? (Math.floor(new Date(timestamp).getTime() / 1000) as Time)
+                  : (Math.floor(new Date(timestamp).getTime() / 1000) as Time));
 
             // Convert to numbers and validate
             const open = Number(bar.open);
