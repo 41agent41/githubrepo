@@ -181,30 +181,6 @@ export default function WorkingChartPage() {
           allKeys: Object.keys(firstBar || {})
         };
         console.log('First bar detailed check:', debugInfo);
-        console.log('Timestamp type:', typeof firstBar?.timestamp);
-        console.log('Timestamp value:', firstBar?.timestamp);
-        
-        // DEBUG: Test timestamp conversion on first bar
-        const testRawTime = firstBar?.timestamp || firstBar?.time;
-        let testTimeValue: number;
-        if (typeof testRawTime === 'string') {
-          testTimeValue = Math.floor(new Date(testRawTime).getTime() / 1000);
-        } else if (typeof testRawTime === 'number') {
-          testTimeValue = testRawTime > 1000000000000 ? Math.floor(testRawTime / 1000) : testRawTime;
-        } else {
-          testTimeValue = Math.floor(new Date(testRawTime).getTime() / 1000);
-        }
-        
-        const testFormattedBar = {
-          time: testTimeValue,
-          open: Number(firstBar?.open),
-          high: Number(firstBar?.high),
-          low: Number(firstBar?.low),
-          close: Number(firstBar?.close)
-        };
-        
-        // Alert with conversion result
-        alert(`CONVERTED BAR TEST:\n\nOriginal timestamp: ${testRawTime}\nConverted time: ${testTimeValue}\n\nopen: ${testFormattedBar.open} (isNaN: ${isNaN(testFormattedBar.open)})\nhigh: ${testFormattedBar.high} (isNaN: ${isNaN(testFormattedBar.high)})\nlow: ${testFormattedBar.low} (isNaN: ${isNaN(testFormattedBar.low)})\nclose: ${testFormattedBar.close} (isNaN: ${isNaN(testFormattedBar.close)})\n\nAll values valid: ${!isNaN(testTimeValue) && !isNaN(testFormattedBar.open) && !isNaN(testFormattedBar.high) && !isNaN(testFormattedBar.low) && !isNaN(testFormattedBar.close)}`);
 
         // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
@@ -268,26 +244,52 @@ export default function WorkingChartPage() {
             return true;
           });
 
+        // CRITICAL: Sort by time ascending (lightweight-charts requirement)
+        formattedData.sort((a, b) => (a.time as number) - (b.time as number));
+        
+        // CRITICAL: Remove duplicate timestamps (lightweight-charts throws "Value is null" for duplicates!)
+        const uniqueData: CandlestickData[] = [];
+        const seenTimes = new Set<number>();
+        for (const bar of formattedData) {
+          const timeNum = bar.time as number;
+          if (!seenTimes.has(timeNum)) {
+            seenTimes.add(timeNum);
+            uniqueData.push(bar);
+          } else {
+            console.warn('Removed duplicate timestamp:', timeNum, bar);
+          }
+        }
+        
+        const duplicatesRemoved = formattedData.length - uniqueData.length;
+        
         console.log('Formatted data:', {
           originalCount: data.bars.length,
-          validCount: formattedData.length,
-          filteredOut: data.bars.length - formattedData.length,
-          first: formattedData[0],
-          last: formattedData[formattedData.length - 1]
+          afterValidation: formattedData.length,
+          afterDedup: uniqueData.length,
+          duplicatesRemoved: duplicatesRemoved,
+          first: uniqueData[0],
+          last: uniqueData[uniqueData.length - 1]
         });
-
-        // CRITICAL: Only set data if we have valid bars
-        if (formattedData.length === 0) {
-          throw new Error(`All ${data.bars.length} bars were invalid (contained null/NaN values)`);
+        
+        if (duplicatesRemoved > 0) {
+          console.warn(`⚠️ Removed ${duplicatesRemoved} duplicate timestamps`);
         }
 
+        // CRITICAL: Only set data if we have valid bars
+        if (uniqueData.length === 0) {
+          throw new Error(`All ${data.bars.length} bars were invalid (contained null/NaN values or duplicates)`);
+        }
+        
+        // Use deduplicated data from here
+        const finalData = uniqueData;
+
         // Set data on chart
-        if (candlestickSeries.current && formattedData.length > 0) {
+        if (candlestickSeries.current && finalData.length > 0) {
           console.log('Setting candlestick data...');
           
           // DEEP VALIDATION: Find any bar with null/NaN/undefined in ANY field
           const invalidBars: any[] = [];
-          formattedData.forEach((bar, index) => {
+          finalData.forEach((bar, index) => {
             const issues: string[] = [];
             if (bar.time === null || bar.time === undefined || (typeof bar.time === 'number' && isNaN(bar.time))) {
               issues.push(`time is invalid: ${bar.time}`);
@@ -311,26 +313,26 @@ export default function WorkingChartPage() {
           
           if (invalidBars.length > 0) {
             console.error('❌ FOUND INVALID BARS:', invalidBars);
-            alert(`FOUND ${invalidBars.length} INVALID BARS!\n\nFirst invalid bar at index ${invalidBars[0].index}:\n${JSON.stringify(invalidBars[0].bar, null, 2)}\n\nIssues: ${invalidBars[0].issues.join(', ')}`);
-            throw new Error(`Found ${invalidBars.length} invalid bars`);
+            throw new Error(`Found ${invalidBars.length} invalid bars - first issue: ${invalidBars[0].issues.join(', ')}`);
           }
           
           console.log('✅ All bars validated, setting data...');
-          console.log('First 3 formatted bars:', formattedData.slice(0, 3));
+          console.log('First 3 final bars:', finalData.slice(0, 3));
+          console.log('Total bars to render:', finalData.length);
           
           try {
-            candlestickSeries.current.setData(formattedData);
+            candlestickSeries.current.setData(finalData);
             console.log('✅ Candlestick data set successfully');
           } catch (err) {
             console.error('❌ Error setting candlestick data:', err);
-            console.error('First 5 bars that failed:', formattedData.slice(0, 5));
+            console.error('First 5 bars that failed:', finalData.slice(0, 5));
             throw err;
           }
         }
 
-        if (volumeSeries.current && formattedData.length > 0) {
+        if (volumeSeries.current && finalData.length > 0) {
           console.log('Setting volume data...');
-          const volumeData = formattedData
+          const volumeData = finalData
             .filter(d => d.volume !== undefined)
             .map(d => ({
               time: d.time,
