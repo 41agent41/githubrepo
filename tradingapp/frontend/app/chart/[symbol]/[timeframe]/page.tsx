@@ -24,7 +24,7 @@ const TIMEFRAMES = [
   { label: '1D', value: '1day' },
 ];
 
-export default function WorkingChartPage() {
+export default function ChartPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const urlSymbol = params.symbol as string;
@@ -42,20 +42,11 @@ export default function WorkingChartPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize chart - SIMPLE & CLEAN
+  // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const container = chartContainerRef.current;
-
-    console.log('=== CHART INITIALIZATION START ===');
-    console.log('Container:', container);
-    console.log('Container dimensions:', {
-      width: container.clientWidth,
-      height: container.clientHeight,
-      offsetWidth: container.offsetWidth,
-      offsetHeight: container.offsetHeight
-    });
 
     // Create chart with autoSize
     chart.current = createChart(container, {
@@ -81,8 +72,6 @@ export default function WorkingChartPage() {
       },
     });
 
-    console.log('Chart instance created:', chart.current);
-
     // Add candlestick series
     candlestickSeries.current = chart.current.addCandlestickSeries({
       upColor: '#26a69a',
@@ -92,8 +81,6 @@ export default function WorkingChartPage() {
       wickDownColor: '#ef5350',
       wickUpColor: '#26a69a',
     });
-
-    console.log('Candlestick series added');
 
     // Add volume series
     volumeSeries.current = chart.current.addHistogramSeries({
@@ -111,11 +98,7 @@ export default function WorkingChartPage() {
       },
     });
 
-    console.log('Volume series added');
-    console.log('=== CHART INITIALIZATION COMPLETE ===');
-
     return () => {
-      console.log('Cleaning up chart');
       if (chart.current) {
         chart.current.remove();
         chart.current = null;
@@ -123,16 +106,10 @@ export default function WorkingChartPage() {
     };
   }, []);
 
-  // Fetch data - SEPARATE from initialization
+  // Fetch data when symbol or timeframe changes
   useEffect(() => {
     const fetchData = async () => {
-      if (!symbol || !timeframe) {
-        console.log('Missing symbol or timeframe');
-        return;
-      }
-
-      console.log('=== DATA FETCH START ===');
-      console.log('Symbol:', symbol, 'Timeframe:', timeframe);
+      if (!symbol || !timeframe) return;
 
       setIsLoading(true);
       setError(null);
@@ -144,8 +121,6 @@ export default function WorkingChartPage() {
         }
 
         const url = `${backendUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=3M`;
-        console.log('Fetching from:', url);
-
         const response = await fetch(url, {
           headers: { 'X-Data-Query-Enabled': 'true' }
         });
@@ -155,43 +130,20 @@ export default function WorkingChartPage() {
         }
 
         const data = await response.json();
-        console.log('=== RAW API RESPONSE ===');
-        console.log('Full response:', data);
-        console.log('Bars count:', data.bars?.length || 0);
-        console.log('First 3 bars (RAW):', data.bars?.slice(0, 3));
-        console.log('Last 3 bars (RAW):', data.bars?.slice(-3));
 
         if (!data.bars || data.bars.length === 0) {
           throw new Error('No data received from API');
         }
 
-        // Check for null values in first bar
-        const firstBar = data.bars[0];
-        const debugInfo = {
-          bar: firstBar,
-          hasTime: 'time' in firstBar,
-          hasTimestamp: 'timestamp' in firstBar,
-          time: firstBar?.time,
-          timestamp: firstBar?.timestamp,
-          open: firstBar?.open,
-          high: firstBar?.high,
-          low: firstBar?.low,
-          close: firstBar?.close,
-          volume: firstBar?.volume,
-          allKeys: Object.keys(firstBar || {})
-        };
-        console.log('First bar detailed check:', debugInfo);
-
-        // Format data with STRICT null/undefined checking
+        // Format data with validation
         const formattedData: CandlestickData[] = data.bars
           .filter((bar: any) => {
-            // CRITICAL: Filter out bars with null/undefined OHLC values BEFORE processing
+            // Filter out bars with null/undefined values
             if (bar === null || bar === undefined) return false;
             if (bar.open === null || bar.open === undefined) return false;
             if (bar.high === null || bar.high === undefined) return false;
             if (bar.low === null || bar.low === undefined) return false;
             if (bar.close === null || bar.close === undefined) return false;
-            // Check BOTH time AND timestamp fields (backend inconsistency)
             if ((bar.timestamp === null || bar.timestamp === undefined) && 
                 (bar.time === null || bar.time === undefined)) return false;
             return true;
@@ -202,52 +154,39 @@ export default function WorkingChartPage() {
             
             let timeValue: Time;
             if (typeof rawTime === 'number') {
-              // Unix timestamp - convert to seconds if in milliseconds
               timeValue = (rawTime > 1000000000000 ? Math.floor(rawTime / 1000) : rawTime) as Time;
             } else if (typeof rawTime === 'string') {
-              // ISO string from database - convert to Unix seconds
               timeValue = Math.floor(new Date(rawTime).getTime() / 1000) as Time;
             } else if (rawTime instanceof Date) {
-              // Date object - convert to Unix seconds
               timeValue = Math.floor(rawTime.getTime() / 1000) as Time;
             } else {
-              // Fallback: try to parse whatever we got
               timeValue = Math.floor(new Date(rawTime).getTime() / 1000) as Time;
             }
 
-            // Convert to numbers and validate
-            const open = Number(bar.open);
-            const high = Number(bar.high);
-            const low = Number(bar.low);
-            const close = Number(bar.close);
-
             return {
               time: timeValue,
-              open,
-              high,
-              low,
-              close,
+              open: Number(bar.open),
+              high: Number(bar.high),
+              low: Number(bar.low),
+              close: Number(bar.close),
               volume: bar.volume && !isNaN(Number(bar.volume)) ? Number(bar.volume) : undefined,
             };
           })
           .filter((bar: CandlestickData) => {
             // Final validation: ensure no NaN values
             if (isNaN(bar.open) || isNaN(bar.high) || isNaN(bar.low) || isNaN(bar.close)) {
-              console.warn('Filtered out bar with NaN values:', bar);
               return false;
             }
-            // Ensure valid price range (high >= low, etc.)
             if (bar.high < bar.low) {
-              console.warn('Filtered out bar with invalid price range (high < low):', bar);
               return false;
             }
             return true;
           });
 
-        // CRITICAL: Sort by time ascending (lightweight-charts requirement)
+        // Sort by time ascending (required by lightweight-charts)
         formattedData.sort((a, b) => (a.time as number) - (b.time as number));
         
-        // CRITICAL: Remove duplicate timestamps (lightweight-charts throws "Value is null" for duplicates!)
+        // Remove duplicate timestamps (required by lightweight-charts)
         const uniqueData: CandlestickData[] = [];
         const seenTimes = new Set<number>();
         for (const bar of formattedData) {
@@ -255,84 +194,21 @@ export default function WorkingChartPage() {
           if (!seenTimes.has(timeNum)) {
             seenTimes.add(timeNum);
             uniqueData.push(bar);
-          } else {
-            console.warn('Removed duplicate timestamp:', timeNum, bar);
           }
         }
-        
-        const duplicatesRemoved = formattedData.length - uniqueData.length;
-        
-        console.log('Formatted data:', {
-          originalCount: data.bars.length,
-          afterValidation: formattedData.length,
-          afterDedup: uniqueData.length,
-          duplicatesRemoved: duplicatesRemoved,
-          first: uniqueData[0],
-          last: uniqueData[uniqueData.length - 1]
-        });
-        
-        if (duplicatesRemoved > 0) {
-          console.warn(`⚠️ Removed ${duplicatesRemoved} duplicate timestamps`);
-        }
 
-        // CRITICAL: Only set data if we have valid bars
         if (uniqueData.length === 0) {
-          throw new Error(`All ${data.bars.length} bars were invalid (contained null/NaN values or duplicates)`);
-        }
-        
-        // Use deduplicated data from here
-        const finalData = uniqueData;
-
-        // Set data on chart
-        if (candlestickSeries.current && finalData.length > 0) {
-          console.log('Setting candlestick data...');
-          
-          // DEEP VALIDATION: Find any bar with null/NaN/undefined in ANY field
-          const invalidBars: any[] = [];
-          finalData.forEach((bar, index) => {
-            const issues: string[] = [];
-            if (bar.time === null || bar.time === undefined || (typeof bar.time === 'number' && isNaN(bar.time))) {
-              issues.push(`time is invalid: ${bar.time}`);
-            }
-            if (bar.open === null || bar.open === undefined || isNaN(bar.open)) {
-              issues.push(`open is invalid: ${bar.open}`);
-            }
-            if (bar.high === null || bar.high === undefined || isNaN(bar.high)) {
-              issues.push(`high is invalid: ${bar.high}`);
-            }
-            if (bar.low === null || bar.low === undefined || isNaN(bar.low)) {
-              issues.push(`low is invalid: ${bar.low}`);
-            }
-            if (bar.close === null || bar.close === undefined || isNaN(bar.close)) {
-              issues.push(`close is invalid: ${bar.close}`);
-            }
-            if (issues.length > 0) {
-              invalidBars.push({ index, bar, issues });
-            }
-          });
-          
-          if (invalidBars.length > 0) {
-            console.error('❌ FOUND INVALID BARS:', invalidBars);
-            throw new Error(`Found ${invalidBars.length} invalid bars - first issue: ${invalidBars[0].issues.join(', ')}`);
-          }
-          
-          console.log('✅ All bars validated, setting data...');
-          console.log('First 3 final bars:', finalData.slice(0, 3));
-          console.log('Total bars to render:', finalData.length);
-          
-          try {
-            candlestickSeries.current.setData(finalData);
-            console.log('✅ Candlestick data set successfully');
-          } catch (err) {
-            console.error('❌ Error setting candlestick data:', err);
-            console.error('First 5 bars that failed:', finalData.slice(0, 5));
-            throw err;
-          }
+          throw new Error('No valid data after processing');
         }
 
-        if (volumeSeries.current && finalData.length > 0) {
-          console.log('Setting volume data...');
-          const volumeData = finalData
+        // Set candlestick data
+        if (candlestickSeries.current) {
+          candlestickSeries.current.setData(uniqueData);
+        }
+
+        // Set volume data
+        if (volumeSeries.current) {
+          const volumeData = uniqueData
             .filter(d => d.volume !== undefined)
             .map(d => ({
               time: d.time,
@@ -340,27 +216,23 @@ export default function WorkingChartPage() {
               color: d.close >= d.open ? '#26a69a80' : '#ef535080',
             }));
           volumeSeries.current.setData(volumeData);
-          console.log('Volume data set successfully');
         }
 
+        // Fit content to view
         if (chart.current) {
-          console.log('Fitting content to timeScale...');
           chart.current.timeScale().fitContent();
-          console.log('Content fitted');
         }
 
-        console.log('=== DATA FETCH COMPLETE ===');
         setIsLoading(false);
 
       } catch (err) {
-        console.error('=== DATA FETCH ERROR ===');
-        console.error(err);
+        console.error('Chart data fetch error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load chart data');
         setIsLoading(false);
       }
     };
 
-    // Small delay to ensure chart is fully initialized
+    // Small delay to ensure chart is initialized
     const timeoutId = setTimeout(fetchData, 100);
     return () => clearTimeout(timeoutId);
   }, [symbol, timeframe]);
@@ -420,7 +292,7 @@ export default function WorkingChartPage() {
           </div>
         )}
 
-        {/* Header with Symbol and In-App Timeframe Selector */}
+        {/* Header with Symbol and Timeframe Selector */}
         <div style={{
           position: 'absolute',
           top: '10px',
@@ -443,7 +315,7 @@ export default function WorkingChartPage() {
             </div>
           </div>
 
-          {/* Timeframe Selector - TradingView Best Practice */}
+          {/* Timeframe Selector */}
           <div style={{
             backgroundColor: 'rgba(30, 30, 30, 0.9)',
             padding: '4px',
@@ -454,10 +326,7 @@ export default function WorkingChartPage() {
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf.value}
-                onClick={() => {
-                  console.log('Timeframe changed to:', tf.value);
-                  setTimeframe(tf.value);
-                }}
+                onClick={() => setTimeframe(tf.value)}
                 style={{
                   padding: '6px 12px',
                   fontSize: '12px',
