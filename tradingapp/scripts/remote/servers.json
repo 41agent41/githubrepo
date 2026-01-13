@@ -1,0 +1,23 @@
+{
+  "servers": {
+    "tradingapp": {
+      "description": "VM 100 - TradingApp Docker host",
+      "host": "10.7.3.20",
+      "user": "tradingapp",
+      "project_path": "/home/tradingapp/tradingapp",
+      "services": ["frontend:3000", "backend:4000", "ib_service:8000"]
+    },
+    "timescaledb": {
+      "description": "LXC 120 - PostgreSQL/TimescaleDB",
+      "host": "10.7.3.21",
+      "user": "root",
+      "port": 5432
+    },
+    "ibkr-gateway": {
+      "description": "VM 101 - Interactive Brokers Gateway",
+      "host": "10.7.3.22",
+      "user": "root",
+      "api_port": 4002
+    }
+  }
+}

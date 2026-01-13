@@ -1,0 +1,27 @@
+# SSH Config Template for TradingApp Infrastructure
+# Copy this content to: C:\Users\seana\.ssh\config
+# (Create the file if it doesn't exist)
+
+# TradingApp Server (VM 100) - Main Docker host
+Host tradingapp
+    HostName 10.7.3.20
+    User tradingapp
+    ForwardAgent yes
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
+# TimescaleDB (LXC 120) - PostgreSQL Database
+Host timescaledb
+    HostName 10.7.3.21
+    User root
+    ForwardAgent yes
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
+# IBKR Gateway (VM 101) - Interactive Brokers API
+Host ibkr-gateway
+    HostName 10.7.3.22
+    User root
+    ForwardAgent yes
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
