@@ -81,13 +81,31 @@ export default function StandaloneChartPage() {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // Ensure container has dimensions before initializing chart
+    const container = chartContainerRef.current;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // Wait for container to have dimensions
+    if (containerWidth === 0 || containerHeight === 0) {
+      console.log('Container not ready, dimensions:', containerWidth, containerHeight);
+      // Retry after a short delay
+      const timeoutId = setTimeout(() => {
+        // Force re-render by updating state
+        setIsLoading(prev => prev);
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+
+    console.log('Initializing chart with container dimensions:', containerWidth, containerHeight);
+
+    // Use autoSize for better responsive behavior (TradingView recommended)
     chart.current = createChart(chartContainerRef.current, {
+      autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: '#ffffff' },
         textColor: '#333',
       },
-      width: chartContainerRef.current.clientWidth,
-      height: isFullscreen ? window.innerHeight : 600,
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
@@ -130,19 +148,7 @@ export default function StandaloneChartPage() {
       },
     });
 
-    const handleResize = () => {
-      if (chart.current && chartContainerRef.current) {
-        chart.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: isFullscreen ? window.innerHeight : 600,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       if (chart.current) {
         chart.current.remove();
       }
@@ -723,7 +729,7 @@ export default function StandaloneChartPage() {
           </div>
         </div>
         
-        <div ref={chartContainerRef} className="w-full h-full" />
+        <div ref={chartContainerRef} className="w-full h-full" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       </div>
     );
   }
