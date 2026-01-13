@@ -183,6 +183,28 @@ export default function WorkingChartPage() {
         console.log('First bar detailed check:', debugInfo);
         console.log('Timestamp type:', typeof firstBar?.timestamp);
         console.log('Timestamp value:', firstBar?.timestamp);
+        
+        // DEBUG: Test timestamp conversion on first bar
+        const testRawTime = firstBar?.timestamp || firstBar?.time;
+        let testTimeValue: number;
+        if (typeof testRawTime === 'string') {
+          testTimeValue = Math.floor(new Date(testRawTime).getTime() / 1000);
+        } else if (typeof testRawTime === 'number') {
+          testTimeValue = testRawTime > 1000000000000 ? Math.floor(testRawTime / 1000) : testRawTime;
+        } else {
+          testTimeValue = Math.floor(new Date(testRawTime).getTime() / 1000);
+        }
+        
+        const testFormattedBar = {
+          time: testTimeValue,
+          open: Number(firstBar?.open),
+          high: Number(firstBar?.high),
+          low: Number(firstBar?.low),
+          close: Number(firstBar?.close)
+        };
+        
+        // Alert with conversion result
+        alert(`CONVERTED BAR TEST:\n\nOriginal timestamp: ${testRawTime}\nConverted time: ${testTimeValue}\n\nopen: ${testFormattedBar.open} (isNaN: ${isNaN(testFormattedBar.open)})\nhigh: ${testFormattedBar.high} (isNaN: ${isNaN(testFormattedBar.high)})\nlow: ${testFormattedBar.low} (isNaN: ${isNaN(testFormattedBar.low)})\nclose: ${testFormattedBar.close} (isNaN: ${isNaN(testFormattedBar.close)})\n\nAll values valid: ${!isNaN(testTimeValue) && !isNaN(testFormattedBar.open) && !isNaN(testFormattedBar.high) && !isNaN(testFormattedBar.low) && !isNaN(testFormattedBar.close)}`);
 
         // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
@@ -262,6 +284,40 @@ export default function WorkingChartPage() {
         // Set data on chart
         if (candlestickSeries.current && formattedData.length > 0) {
           console.log('Setting candlestick data...');
+          
+          // DEEP VALIDATION: Find any bar with null/NaN/undefined in ANY field
+          const invalidBars: any[] = [];
+          formattedData.forEach((bar, index) => {
+            const issues: string[] = [];
+            if (bar.time === null || bar.time === undefined || (typeof bar.time === 'number' && isNaN(bar.time))) {
+              issues.push(`time is invalid: ${bar.time}`);
+            }
+            if (bar.open === null || bar.open === undefined || isNaN(bar.open)) {
+              issues.push(`open is invalid: ${bar.open}`);
+            }
+            if (bar.high === null || bar.high === undefined || isNaN(bar.high)) {
+              issues.push(`high is invalid: ${bar.high}`);
+            }
+            if (bar.low === null || bar.low === undefined || isNaN(bar.low)) {
+              issues.push(`low is invalid: ${bar.low}`);
+            }
+            if (bar.close === null || bar.close === undefined || isNaN(bar.close)) {
+              issues.push(`close is invalid: ${bar.close}`);
+            }
+            if (issues.length > 0) {
+              invalidBars.push({ index, bar, issues });
+            }
+          });
+          
+          if (invalidBars.length > 0) {
+            console.error('❌ FOUND INVALID BARS:', invalidBars);
+            alert(`FOUND ${invalidBars.length} INVALID BARS!\n\nFirst invalid bar at index ${invalidBars[0].index}:\n${JSON.stringify(invalidBars[0].bar, null, 2)}\n\nIssues: ${invalidBars[0].issues.join(', ')}`);
+            throw new Error(`Found ${invalidBars.length} invalid bars`);
+          }
+          
+          console.log('✅ All bars validated, setting data...');
+          console.log('First 3 formatted bars:', formattedData.slice(0, 3));
+          
           try {
             candlestickSeries.current.setData(formattedData);
             console.log('✅ Candlestick data set successfully');
