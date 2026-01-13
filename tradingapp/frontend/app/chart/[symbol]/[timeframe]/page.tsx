@@ -181,9 +181,8 @@ export default function WorkingChartPage() {
           allKeys: Object.keys(firstBar || {})
         };
         console.log('First bar detailed check:', debugInfo);
-        
-        // TEMPORARY DEBUG: Show alert with first bar structure
-        alert(`DEBUG INFO:\n\nBar keys: ${Object.keys(firstBar || {}).join(', ')}\n\nhasTime: ${debugInfo.hasTime}\nhasTimestamp: ${debugInfo.hasTimestamp}\n\ntime value: ${firstBar?.time}\ntimestamp value: ${firstBar?.timestamp}`);
+        console.log('Timestamp type:', typeof firstBar?.timestamp);
+        console.log('Timestamp value:', firstBar?.timestamp);
 
         // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
@@ -201,12 +200,22 @@ export default function WorkingChartPage() {
           })
           .map((bar: any) => {
             // Handle both 'time' (from IB service) and 'timestamp' (from database)
-            const timestamp = bar.time || bar.timestamp;
-            const timeValue = typeof timestamp === 'number'
-              ? (timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp) as Time
-              : (typeof timestamp === 'string' 
-                  ? (Math.floor(new Date(timestamp).getTime() / 1000) as Time)
-                  : (Math.floor(new Date(timestamp).getTime() / 1000) as Time));
+            const rawTime = bar.timestamp || bar.time;
+            
+            let timeValue: Time;
+            if (typeof rawTime === 'number') {
+              // Unix timestamp - convert to seconds if in milliseconds
+              timeValue = (rawTime > 1000000000000 ? Math.floor(rawTime / 1000) : rawTime) as Time;
+            } else if (typeof rawTime === 'string') {
+              // ISO string from database - convert to Unix seconds
+              timeValue = Math.floor(new Date(rawTime).getTime() / 1000) as Time;
+            } else if (rawTime instanceof Date) {
+              // Date object - convert to Unix seconds
+              timeValue = Math.floor(rawTime.getTime() / 1000) as Time;
+            } else {
+              // Fallback: try to parse whatever we got
+              timeValue = Math.floor(new Date(rawTime).getTime() / 1000) as Time;
+            }
 
             // Convert to numbers and validate
             const open = Number(bar.open);
