@@ -81,25 +81,13 @@ export default function StandaloneChartPage() {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Ensure container has dimensions before initializing chart
-    const container = chartContainerRef.current;
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
+    console.log('Initializing TradingView chart...', { 
+      container: chartContainerRef.current, 
+      isFullscreen 
+    });
 
-    // Wait for container to have dimensions
-    if (containerWidth === 0 || containerHeight === 0) {
-      console.log('Container not ready, dimensions:', containerWidth, containerHeight);
-      // Retry after a short delay
-      const timeoutId = setTimeout(() => {
-        // Force re-render by updating state
-        setIsLoading(prev => prev);
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-
-    console.log('Initializing chart with container dimensions:', containerWidth, containerHeight);
-
-    // Use autoSize for better responsive behavior (TradingView recommended)
+    // TradingView Best Practice: Use autoSize for responsive behavior
+    // autoSize automatically handles container dimensions via ResizeObserver
     chart.current = createChart(chartContainerRef.current, {
       autoSize: true,
       layout: {
@@ -122,6 +110,8 @@ export default function StandaloneChartPage() {
         secondsVisible: false,
       },
     });
+
+    console.log('Chart instance created successfully');
 
     candlestickSeries.current = chart.current.addCandlestickSeries({
       upColor: '#4CAF50',
@@ -148,9 +138,13 @@ export default function StandaloneChartPage() {
       },
     });
 
+    console.log('Chart series added successfully');
+
     return () => {
+      console.log('Cleaning up chart...');
       if (chart.current) {
         chart.current.remove();
+        chart.current = null;
       }
       if (socketRef.current) {
         socketRef.current.disconnect();
