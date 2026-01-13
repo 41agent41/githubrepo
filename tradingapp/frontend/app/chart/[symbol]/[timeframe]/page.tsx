@@ -167,7 +167,7 @@ export default function WorkingChartPage() {
 
         // Check for null values in first bar
         const firstBar = data.bars[0];
-        console.log('First bar detailed check:', {
+        const debugInfo = {
           bar: firstBar,
           hasTime: 'time' in firstBar,
           hasTimestamp: 'timestamp' in firstBar,
@@ -179,7 +179,11 @@ export default function WorkingChartPage() {
           close: firstBar?.close,
           volume: firstBar?.volume,
           allKeys: Object.keys(firstBar || {})
-        });
+        };
+        console.log('First bar detailed check:', debugInfo);
+        
+        // TEMPORARY DEBUG: Show alert with first bar structure
+        alert(`DEBUG INFO:\n\nBar keys: ${Object.keys(firstBar || {}).join(', ')}\n\nhasTime: ${debugInfo.hasTime}\nhasTimestamp: ${debugInfo.hasTimestamp}\n\ntime value: ${firstBar?.time}\ntimestamp value: ${firstBar?.timestamp}`);
 
         // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
