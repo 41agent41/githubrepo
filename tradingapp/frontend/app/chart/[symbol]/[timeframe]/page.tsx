@@ -14,11 +14,21 @@ interface CandlestickData {
   volume?: number;
 }
 
+const TIMEFRAMES = [
+  { label: '1m', value: '1min' },
+  { label: '5m', value: '5min' },
+  { label: '15m', value: '15min' },
+  { label: '30m', value: '30min' },
+  { label: '1h', value: '1hour' },
+  { label: '4h', value: '4hour' },
+  { label: '1D', value: '1day' },
+];
+
 export default function WorkingChartPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const symbol = params.symbol as string;
-  const timeframe = params.timeframe as string;
+  const urlSymbol = params.symbol as string;
+  const urlTimeframe = params.timeframe as string;
   const isFullscreen = searchParams.get('fullscreen') === 'true';
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -26,6 +36,9 @@ export default function WorkingChartPage() {
   const candlestickSeries = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
 
+  // Use state for symbol and timeframe - allows in-app changes WITHOUT page reload
+  const [symbol, setSymbol] = useState(urlSymbol);
+  const [timeframe, setTimeframe] = useState(urlTimeframe);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -276,17 +289,69 @@ export default function WorkingChartPage() {
           </div>
         )}
 
+        {/* Header with Symbol and In-App Timeframe Selector */}
         <div style={{
           position: 'absolute',
           top: '10px',
           left: '10px',
+          right: '10px',
           zIndex: 30,
-          backgroundColor: 'rgba(30, 30, 30, 0.9)',
-          padding: '8px 12px',
-          borderRadius: '4px'
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px'
         }}>
-          <div style={{ color: '#d1d4dc', fontSize: '14px', fontWeight: 'bold' }}>
-            {symbol} - {timeframe}
+          {/* Symbol Display */}
+          <div style={{
+            backgroundColor: 'rgba(30, 30, 30, 0.9)',
+            padding: '8px 12px',
+            borderRadius: '4px'
+          }}>
+            <div style={{ color: '#d1d4dc', fontSize: '14px', fontWeight: 'bold' }}>
+              {symbol}
+            </div>
+          </div>
+
+          {/* Timeframe Selector - TradingView Best Practice */}
+          <div style={{
+            backgroundColor: 'rgba(30, 30, 30, 0.9)',
+            padding: '4px',
+            borderRadius: '4px',
+            display: 'flex',
+            gap: '4px'
+          }}>
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf.value}
+                onClick={() => {
+                  console.log('Timeframe changed to:', tf.value);
+                  setTimeframe(tf.value);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: timeframe === tf.value ? 'bold' : 'normal',
+                  color: timeframe === tf.value ? '#ffffff' : '#d1d4dc',
+                  backgroundColor: timeframe === tf.value ? '#26a69a' : 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (timeframe !== tf.value) {
+                    e.currentTarget.style.backgroundColor = 'rgba(38, 166, 154, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (timeframe !== tf.value) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                {tf.label}
+              </button>
+            ))}
           </div>
         </div>
 
