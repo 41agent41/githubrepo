@@ -52,6 +52,7 @@ export default function StandaloneChartPage() {
   const indicators = searchParams.get('indicators')?.split(',') || [];
   const strategies = searchParams.get('strategies')?.split(',') || [];
   const port = searchParams.get('port');
+  const isFullscreen = searchParams.get('fullscreen') === 'true';
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -86,7 +87,7 @@ export default function StandaloneChartPage() {
         textColor: '#333',
       },
       width: chartContainerRef.current.clientWidth,
-      height: 600,
+      height: isFullscreen ? window.innerHeight : 600,
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
@@ -133,6 +134,7 @@ export default function StandaloneChartPage() {
       if (chart.current && chartContainerRef.current) {
         chart.current.applyOptions({
           width: chartContainerRef.current.clientWidth,
+          height: isFullscreen ? window.innerHeight : 600,
         });
       }
     };
@@ -148,7 +150,7 @@ export default function StandaloneChartPage() {
         socketRef.current.disconnect();
       }
     };
-  }, []);
+  }, [isFullscreen]);
 
   // Add indicator overlays to chart
   const addIndicatorOverlays = useCallback((data: CandlestickData[], selectedIndicators: string[]) => {
@@ -686,6 +688,47 @@ export default function StandaloneChartPage() {
     setIsOrderDialogOpen(true);
   };
 
+  // Fullscreen mode - render only the chart
+  if (isFullscreen) {
+    return (
+      <div className="w-screen h-screen overflow-hidden bg-white">
+        {error && (
+          <div className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 p-3 bg-red-50 border border-red-200 rounded-md shadow-lg">
+            <div className="text-sm text-red-800">❌ {error}</div>
+          </div>
+        )}
+        
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-40">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <div className="text-gray-600">Loading {symbol} chart...</div>
+            </div>
+          </div>
+        )}
+        
+        {/* Minimal header overlay */}
+        <div className="absolute top-2 left-2 z-30 bg-white bg-opacity-90 px-3 py-2 rounded-md shadow-sm">
+          <div className="flex items-center space-x-3">
+            <h1 className="text-sm font-bold text-gray-900">
+              {symbol} - {timeframe}
+            </h1>
+            <div className="flex items-center space-x-1">
+              <div className={`w-2 h-2 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-500' :
+                connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+              }`}></div>
+              <span className="text-xs text-gray-600 capitalize">{connectionStatus}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div ref={chartContainerRef} className="w-full h-full" />
+      </div>
+    );
+  }
+
+  // Normal mode - full UI
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}

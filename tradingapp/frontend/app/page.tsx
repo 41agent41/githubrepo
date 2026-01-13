@@ -69,7 +69,7 @@ export default function HomePage() {
           </a>
           
           <a 
-            href="/chart/MSFT/1hour" 
+            href="/chart/MSFT/1hour?fullscreen=true" 
             target="_blank"
             rel="noopener noreferrer"
             className="block p-4 sm:p-6 lg:p-8 bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow duration-200"
