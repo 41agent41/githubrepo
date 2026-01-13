@@ -165,38 +165,77 @@ export default function WorkingChartPage() {
           throw new Error('No data received from API');
         }
 
-        // Format data
+        // Format data with STRICT null/undefined checking
         const formattedData: CandlestickData[] = data.bars
+          .filter((bar: any) => {
+            // CRITICAL: Filter out bars with null/undefined OHLC values BEFORE processing
+            if (bar === null || bar === undefined) return false;
+            if (bar.open === null || bar.open === undefined) return false;
+            if (bar.high === null || bar.high === undefined) return false;
+            if (bar.low === null || bar.low === undefined) return false;
+            if (bar.close === null || bar.close === undefined) return false;
+            if (bar.timestamp === null || bar.timestamp === undefined) return false;
+            return true;
+          })
           .map((bar: any) => {
             const timestamp = bar.timestamp || bar.time;
             const timeValue = typeof timestamp === 'number'
               ? (timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp) as Time
               : (Math.floor(new Date(timestamp).getTime() / 1000) as Time);
 
+            // Convert to numbers and validate
+            const open = Number(bar.open);
+            const high = Number(bar.high);
+            const low = Number(bar.low);
+            const close = Number(bar.close);
+
             return {
               time: timeValue,
-              open: Number(bar.open),
-              high: Number(bar.high),
-              low: Number(bar.low),
-              close: Number(bar.close),
-              volume: bar.volume ? Number(bar.volume) : undefined,
+              open,
+              high,
+              low,
+              close,
+              volume: bar.volume && !isNaN(Number(bar.volume)) ? Number(bar.volume) : undefined,
             };
           })
-          .filter((bar: CandlestickData) => 
-            !isNaN(bar.open) && !isNaN(bar.high) && !isNaN(bar.low) && !isNaN(bar.close)
-          );
+          .filter((bar: CandlestickData) => {
+            // Final validation: ensure no NaN values
+            if (isNaN(bar.open) || isNaN(bar.high) || isNaN(bar.low) || isNaN(bar.close)) {
+              console.warn('Filtered out bar with NaN values:', bar);
+              return false;
+            }
+            // Ensure valid price range (high >= low, etc.)
+            if (bar.high < bar.low) {
+              console.warn('Filtered out bar with invalid price range (high < low):', bar);
+              return false;
+            }
+            return true;
+          });
 
         console.log('Formatted data:', {
-          count: formattedData.length,
+          originalCount: data.bars.length,
+          validCount: formattedData.length,
+          filteredOut: data.bars.length - formattedData.length,
           first: formattedData[0],
           last: formattedData[formattedData.length - 1]
         });
 
+        // CRITICAL: Only set data if we have valid bars
+        if (formattedData.length === 0) {
+          throw new Error(`All ${data.bars.length} bars were invalid (contained null/NaN values)`);
+        }
+
         // Set data on chart
         if (candlestickSeries.current && formattedData.length > 0) {
           console.log('Setting candlestick data...');
-          candlestickSeries.current.setData(formattedData);
-          console.log('Candlestick data set successfully');
+          try {
+            candlestickSeries.current.setData(formattedData);
+            console.log('✅ Candlestick data set successfully');
+          } catch (err) {
+            console.error('❌ Error setting candlestick data:', err);
+            console.error('First 5 bars that failed:', formattedData.slice(0, 5));
+            throw err;
+          }
         }
 
         if (volumeSeries.current && formattedData.length > 0) {
