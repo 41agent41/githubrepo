@@ -687,6 +687,39 @@ router.get('/database/stats', async (req: Request, res: Response) => {
   }
 });
 
+// Get all symbols available in database
+router.get('/database/symbols', async (req: Request, res: Response) => {
+  try {
+    console.log('Fetching available symbols from database');
+    
+    const symbols = await marketDataService.getAvailableSymbols();
+    
+    console.log(`Found ${symbols.length} symbols in database`);
+    
+    res.json({
+      symbols: symbols.map(s => ({
+        symbol: s.symbol,
+        timeframes: s.timeframes.map(tf => ({
+          timeframe: tf.timeframe,
+          bar_count: tf.bar_count,
+          earliest_date: tf.earliest_date?.toISOString() || null,
+          latest_date: tf.latest_date?.toISOString() || null
+        }))
+      })),
+      total_symbols: symbols.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error fetching available symbols:', error);
+    
+    res.status(500).json({
+      error: 'Failed to fetch available symbols',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Upload historical data to database endpoint
 router.post('/upload', async (req: Request, res: Response) => {
   try {

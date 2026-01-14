@@ -48,6 +48,8 @@ export default function ChartPage() {
   const [timeframe, setTimeframe] = useState(urlTimeframe);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataSource, setDataSource] = useState<'database' | 'ib_service' | null>(null);
+  const [barCount, setBarCount] = useState<number>(0);
 
   // Initialize chart
   useEffect(() => {
@@ -141,6 +143,10 @@ export default function ChartPage() {
         if (!data.bars || data.bars.length === 0) {
           throw new Error('No data received from API');
         }
+
+        // Capture data source
+        setDataSource(data.source || 'ib_service');
+        setBarCount(data.bars.length);
 
         // Format data with validation
         const formattedData: CandlestickData[] = data.bars
@@ -311,15 +317,36 @@ export default function ChartPage() {
           alignItems: 'center',
           gap: '12px'
         }}>
-          {/* Symbol Display */}
+          {/* Symbol Display with Data Source */}
           <div style={{
             backgroundColor: 'rgba(30, 30, 30, 0.9)',
             padding: '8px 12px',
-            borderRadius: '4px'
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
           }}>
             <div style={{ color: '#d1d4dc', fontSize: '14px', fontWeight: 'bold' }}>
               {symbol}
             </div>
+            {dataSource && (
+              <div style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                backgroundColor: dataSource === 'database' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                color: dataSource === 'database' ? '#10b981' : '#3b82f6',
+                border: `1px solid ${dataSource === 'database' ? '#10b981' : '#3b82f6'}`
+              }}>
+                {dataSource === 'database' ? '📊 DATABASE' : '🌐 API'}
+              </div>
+            )}
+            {barCount > 0 && (
+              <div style={{ color: '#6b7280', fontSize: '11px' }}>
+                {barCount.toLocaleString()} bars
+              </div>
+            )}
           </div>
 
           {/* Timeframe Selector */}
@@ -397,11 +424,33 @@ export default function ChartPage() {
         <div style={{
           maxWidth: '1280px',
           margin: '0 auto',
-          padding: '16px 24px'
+          padding: '16px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
         }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e1e1e' }}>
-            {symbol} - {timeframe}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e1e1e' }}>
+              {symbol} - {timeframe}
+            </h1>
+            {dataSource && (
+              <span style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                backgroundColor: dataSource === 'database' ? '#d1fae5' : '#dbeafe',
+                color: dataSource === 'database' ? '#059669' : '#2563eb'
+              }}>
+                {dataSource === 'database' ? '📊 Database' : '🌐 API'}
+              </span>
+            )}
+          </div>
+          {barCount > 0 && (
+            <div style={{ fontSize: '14px', color: '#6b7280' }}>
+              {barCount.toLocaleString()} bars loaded
+            </div>
+          )}
         </div>
       </header>
 

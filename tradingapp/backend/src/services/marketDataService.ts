@@ -450,6 +450,73 @@ export class MarketDataService {
       skipped_count: result.errors
     };
   }
+
+  // Get all symbols available in the database with their timeframes and bar counts
+  async getAvailableSymbols(): Promise<{
+    symbol: string;
+    timeframes: {
+      timeframe: string;
+      bar_count: number;
+      earliest_date: Date | null;
+      latest_date: Date | null;
+    }[];
+  }[]> {
+    const query = `
+      SELECT 
+        c.symbol,
+        cd.timeframe,
+        COUNT(cd.id) as bar_count,
+        MIN(cd.timestamp) as earliest_date,
+        MAX(cd.timestamp) as latest_date
+      FROM contracts c
+      INNER JOIN candlestick_data cd ON c.id = cd.contract_id
+      WHERE cd.timeframe IS NOT NULL
+      GROUP BY c.symbol, cd.timeframe
+      HAVING COUNT(cd.id) > 0
+      ORDER BY c.symbol ASC, cd.timeframe ASC
+    `;
+    
+    const result = await dbService.query(query);
+    
+    // Group results by symbol
+    const symbolMap = new Map<string, {
+      timeframe: string;
+      bar_count: number;
+      earliest_date: Date | null;
+      latest_date: Date | null;
+    }[]>();
+    
+    for (const row of result.rows) {
+      const symbol = row.symbol;
+      if (!symbolMap.has(symbol)) {
+        symbolMap.set(symbol, []);
+      }
+      
+      symbolMap.get(symbol)!.push({
+        timeframe: row.timeframe,
+        bar_count: parseInt(row.bar_count),
+        earliest_date: row.earliest_date ? new Date(row.earliest_date) : null,
+        latest_date: row.latest_date ? new Date(row.latest_date) : null
+      });
+    }
+    
+    // Convert map to array
+    const symbols: {
+      symbol: string;
+      timeframes: {
+        timeframe: string;
+        bar_count: number;
+        earliest_date: Date | null;
+        latest_date: Date | null;
+      }[];
+    }[] = [];
+    
+    symbolMap.forEach((timeframes, symbol) => {
+      symbols.push({ symbol, timeframes });
+    });
+    
+    return symbols;
+  }
 }
 
 // Export singleton instance

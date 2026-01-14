@@ -69,19 +69,17 @@ export default function HomePage() {
           </a>
           
           <a 
-            href="/chart/MSFT/1hour?fullscreen=true" 
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block p-4 sm:p-6 lg:p-8 bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow duration-200"
+            href="/chart" 
+            className="block p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg shadow-sm border border-emerald-200 hover:shadow-md hover:border-emerald-300 transition-all duration-200"
           >
             <div className="flex items-start sm:items-center">
               <div className="text-2xl sm:text-3xl lg:text-4xl mr-3 sm:mr-4 flex-shrink-0">📈</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg lg:text-xl font-medium text-gray-900 truncate">MSFT Real-time Chart</h3>
-                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">New Tab</span>
+                  <h3 className="text-base sm:text-lg lg:text-xl font-medium text-gray-900 truncate">Symbol Chart</h3>
+                  <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded">Database + API</span>
                 </div>
-                <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1 line-clamp-2">Live Microsoft stock data with TradingView charts</p>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1 line-clamp-2">View charts for any symbol from database or live API</p>
               </div>
             </div>
           </a>
