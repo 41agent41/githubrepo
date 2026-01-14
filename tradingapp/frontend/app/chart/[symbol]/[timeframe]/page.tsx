@@ -57,12 +57,13 @@ export default function ChartPage() {
 
     const container = chartContainerRef.current;
 
-    // Create chart with autoSize
+    // Create chart with autoSize and larger fonts
     chart.current = createChart(container, {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: '#1e1e1e' },
         textColor: '#d1d4dc',
+        fontSize: 20, // Large font for better visibility - Options: 10, 11, 12, 13, 14, 16, 18, 20, 24
       },
       grid: {
         vertLines: { color: '#2b2b43' },
@@ -320,20 +321,20 @@ export default function ChartPage() {
           {/* Symbol Display with Data Source */}
           <div style={{
             backgroundColor: 'rgba(30, 30, 30, 0.9)',
-            padding: '8px 12px',
-            borderRadius: '4px',
+            padding: '10px 16px',
+            borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '12px'
           }}>
-            <div style={{ color: '#d1d4dc', fontSize: '14px', fontWeight: 'bold' }}>
+            <div style={{ color: '#ffffff', fontSize: '20px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
               {symbol}
             </div>
             {dataSource && (
               <div style={{
-                padding: '2px 8px',
+                padding: '4px 10px',
                 borderRadius: '4px',
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: 'bold',
                 backgroundColor: dataSource === 'database' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
                 color: dataSource === 'database' ? '#10b981' : '#3b82f6',
@@ -343,7 +344,7 @@ export default function ChartPage() {
               </div>
             )}
             {barCount > 0 && (
-              <div style={{ color: '#6b7280', fontSize: '11px' }}>
+              <div style={{ color: '#9ca3af', fontSize: '13px' }}>
                 {barCount.toLocaleString()} bars
               </div>
             )}
@@ -352,8 +353,8 @@ export default function ChartPage() {
           {/* Timeframe Selector */}
           <div style={{
             backgroundColor: 'rgba(30, 30, 30, 0.9)',
-            padding: '4px',
-            borderRadius: '4px',
+            padding: '6px',
+            borderRadius: '6px',
             display: 'flex',
             gap: '4px'
           }}>
@@ -365,13 +366,13 @@ export default function ChartPage() {
                   updateTimeframeUrl(tf.value);
                 }}
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '12px',
+                  padding: '8px 14px',
+                  fontSize: '14px',
                   fontWeight: timeframe === tf.value ? 'bold' : 'normal',
                   color: timeframe === tf.value ? '#ffffff' : '#d1d4dc',
                   backgroundColor: timeframe === tf.value ? '#26a69a' : 'transparent',
                   border: 'none',
-                  borderRadius: '3px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
                   transition: 'all 0.2s'
                 }}

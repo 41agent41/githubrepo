@@ -330,11 +330,30 @@ router.get('/history', async (req: Request, res: Response) => {
     const useDatabase = use_database === 'true';
     const includeIndicators = include_indicators === 'true';
 
+    // Helper function to calculate start date from period
+    const getStartDateFromPeriod = (periodStr: string | undefined): Date => {
+      const now = new Date();
+      switch (periodStr) {
+        case '1D': return new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+        case '5D': return new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+        case '1W': return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        case '1M': return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        case '3M': return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        case '6M': return new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+        case '1Y': return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        case '2Y': return new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000);
+        default: return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); // Default to 1 year for database queries
+      }
+    };
+
     if (useDatabase) {
       try {
-        // Try to get data from database first
-        const startDate = start_date ? new Date(start_date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+        // Calculate date range based on period parameter or explicit dates
+        // Use a wider range for database queries to get all available data
+        const startDate = start_date ? new Date(start_date) : getStartDateFromPeriod(period);
         const endDate = end_date ? new Date(end_date) : new Date();
+        
+        console.log(`Database query for ${symbol} ${timeframe}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
         
         const dbData = await marketDataService.getHistoricalData(
           symbol,
@@ -358,6 +377,8 @@ router.get('/history', async (req: Request, res: Response) => {
             end_date: endDate.toISOString(),
             timestamp: new Date().toISOString()
           });
+        } else {
+          console.log(`No data found in database for ${symbol} ${timeframe} in range ${startDate.toISOString()} to ${endDate.toISOString()}`);
         }
       } catch (dbError) {
         console.warn('Database query failed, falling back to IB service:', dbError);
