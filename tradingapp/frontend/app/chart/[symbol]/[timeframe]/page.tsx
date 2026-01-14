@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { getApiUrl } from '../../../utils/apiConfig';
 
@@ -27,9 +27,16 @@ const TIMEFRAMES = [
 export default function ChartPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const urlSymbol = params.symbol as string;
   const urlTimeframe = params.timeframe as string;
   const isFullscreen = searchParams.get('fullscreen') === 'true';
+  
+  // Function to update URL when timeframe changes
+  const updateTimeframeUrl = (newTimeframe: string) => {
+    const queryString = isFullscreen ? '?fullscreen=true' : '';
+    router.replace(`/chart/${symbol}/${newTimeframe}${queryString}`, { scroll: false });
+  };
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -326,7 +333,10 @@ export default function ChartPage() {
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf.value}
-                onClick={() => setTimeframe(tf.value)}
+                onClick={() => {
+                  setTimeframe(tf.value);
+                  updateTimeframeUrl(tf.value);
+                }}
                 style={{
                   padding: '6px 12px',
                   fontSize: '12px',
