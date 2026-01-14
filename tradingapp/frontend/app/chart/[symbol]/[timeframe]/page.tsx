@@ -130,7 +130,7 @@ export default function ChartPage() {
           throw new Error('API URL not configured');
         }
 
-        const url = `${backendUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=3M`;
+        const url = `${backendUrl}/api/market-data/history?symbol=${symbol}&timeframe=${timeframe}&period=3M&use_database=true`;
         const response = await fetch(url, {
           headers: { 'X-Data-Query-Enabled': 'true' }
         });
