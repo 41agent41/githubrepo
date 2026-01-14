@@ -336,11 +336,11 @@ export default function ChartPage() {
                 borderRadius: '4px',
                 fontSize: '12px',
                 fontWeight: 'bold',
-                backgroundColor: dataSource === 'database' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                color: dataSource === 'database' ? '#10b981' : '#3b82f6',
-                border: `1px solid ${dataSource === 'database' ? '#10b981' : '#3b82f6'}`
+                backgroundColor: dataSource?.includes('database') ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                color: dataSource?.includes('database') ? '#10b981' : '#3b82f6',
+                border: `1px solid ${dataSource?.includes('database') ? '#10b981' : '#3b82f6'}`
               }}>
-                {dataSource === 'database' ? '📊 DATABASE' : '🌐 API'}
+                {dataSource?.includes('database') ? (dataSource === 'database' ? '📊 DATABASE' : '📊 DB+API') : '🌐 API'}
               </div>
             )}
             {barCount > 0 && (
@@ -440,10 +440,10 @@ export default function ChartPage() {
                 borderRadius: '6px',
                 fontSize: '12px',
                 fontWeight: 'bold',
-                backgroundColor: dataSource === 'database' ? '#d1fae5' : '#dbeafe',
-                color: dataSource === 'database' ? '#059669' : '#2563eb'
+                backgroundColor: dataSource?.includes('database') ? '#d1fae5' : '#dbeafe',
+                color: dataSource?.includes('database') ? '#059669' : '#2563eb'
               }}>
-                {dataSource === 'database' ? '📊 Database' : '🌐 API'}
+                {dataSource?.includes('database') ? (dataSource === 'database' ? '📊 Database' : '📊 DB+API') : '🌐 API'}
               </span>
             )}
           </div>
