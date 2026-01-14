@@ -355,6 +355,10 @@ router.get('/history', async (req: Request, res: Response) => {
         
         console.log(`Database query for ${symbol} ${timeframe}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
         
+        // Debug: Check what's available in database for this symbol
+        const availableData = await marketDataService.getAvailableTimeframesForSymbol(symbol);
+        console.log(`Available timeframes in DB for ${symbol}:`, JSON.stringify(availableData));
+        
         const dbData = await marketDataService.getHistoricalData(
           symbol,
           timeframe,
@@ -379,6 +383,7 @@ router.get('/history', async (req: Request, res: Response) => {
           });
         } else {
           console.log(`No data found in database for ${symbol} ${timeframe} in range ${startDate.toISOString()} to ${endDate.toISOString()}`);
+          console.log(`Database has these timeframes for ${symbol}:`, availableData);
         }
       } catch (dbError) {
         console.warn('Database query failed, falling back to IB service:', dbError);

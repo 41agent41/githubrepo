@@ -517,6 +517,37 @@ export class MarketDataService {
     
     return symbols;
   }
+
+  // Get available timeframes for a specific symbol (for debugging)
+  async getAvailableTimeframesForSymbol(symbol: string): Promise<{
+    timeframe: string;
+    bar_count: number;
+    earliest_date: string | null;
+    latest_date: string | null;
+  }[]> {
+    const query = `
+      SELECT 
+        cd.timeframe,
+        COUNT(cd.id) as bar_count,
+        MIN(cd.timestamp) as earliest_date,
+        MAX(cd.timestamp) as latest_date
+      FROM contracts c
+      INNER JOIN candlestick_data cd ON c.id = cd.contract_id
+      WHERE c.symbol = $1 AND cd.timeframe IS NOT NULL
+      GROUP BY cd.timeframe
+      HAVING COUNT(cd.id) > 0
+      ORDER BY cd.timeframe ASC
+    `;
+    
+    const result = await dbService.query(query, [symbol]);
+    
+    return result.rows.map((row: any) => ({
+      timeframe: row.timeframe,
+      bar_count: parseInt(row.bar_count),
+      earliest_date: row.earliest_date ? new Date(row.earliest_date).toISOString() : null,
+      latest_date: row.latest_date ? new Date(row.latest_date).toISOString() : null
+    }));
+  }
 }
 
 // Export singleton instance
