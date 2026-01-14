@@ -384,33 +384,41 @@ router.get('/history', async (req: Request, res: Response) => {
           let dataSource = 'database';
           
           if (timeSinceLastBar > 2 * hourInMs) {
-            console.log(`Fetching gap data from API: ${latestDbDate.toISOString()} to ${now.toISOString()}`);
+            // Calculate appropriate period based on gap size
+            const gapDays = timeSinceLastBar / (24 * hourInMs);
+            let gapPeriod = '1M';
+            if (gapDays > 180) gapPeriod = '1Y';
+            else if (gapDays > 90) gapPeriod = '6M';
+            else if (gapDays > 30) gapPeriod = '3M';
+            
+            console.log(`Fetching gap data from API: gap=${gapDays.toFixed(0)} days, using period=${gapPeriod}`);
             
             try {
-              // Fetch from API starting from last DB point
+              // Fetch from API using period (more reliable than date ranges)
               const gapResponse = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
                 params: {
                   symbol: symbol,
                   timeframe: timeframe,
-                  start_date: latestDbDate.toISOString().split('T')[0],
-                  end_date: now.toISOString().split('T')[0],
+                  period: gapPeriod,
                   account_mode: account_mode || 'paper',
                   secType: secType || 'STK',
                   exchange: exchange || 'SMART',
                   currency: currency || 'USD'
                 },
-                timeout: 30000
+                timeout: 60000
               });
               
-              if (gapResponse.data?.data && gapResponse.data.data.length > 0) {
+              console.log(`API response: ${gapResponse.data?.bars?.length || 0} bars received`);
+              
+              if (gapResponse.data?.bars && gapResponse.data.bars.length > 0) {
                 // Filter API bars to only include those after latest DB timestamp
-                const newBars = gapResponse.data.data
+                const newBars = gapResponse.data.bars
                   .filter((bar: any) => {
-                    const barTime = bar.time * 1000; // Convert to ms if in seconds
+                    const barTime = (bar.timestamp || bar.time) * 1000; // Convert to ms if in seconds
                     return barTime > latestDbTimestamp;
                   })
                   .map((bar: any) => ({
-                    timestamp: new Date(bar.time * 1000).toISOString(),
+                    timestamp: new Date((bar.timestamp || bar.time) * 1000).toISOString(),
                     open: bar.open,
                     high: bar.high,
                     low: bar.low,
@@ -447,9 +455,11 @@ router.get('/history', async (req: Request, res: Response) => {
                   }
                 }
               }
-            } catch (gapErr) {
-              console.warn('Failed to fetch gap data from API:', gapErr);
-              // Continue with database data only
+            } catch (gapErr: any) {
+              console.error('Failed to fetch gap data from API:', gapErr.message || gapErr);
+              console.error('Full error:', JSON.stringify(gapErr.response?.data || gapErr.message || 'Unknown error'));
+              // Continue with database data only, but log the error
+              dataSource = 'database (api-gap-failed)';
             }
           }
           
