@@ -348,42 +348,128 @@ router.get('/history', async (req: Request, res: Response) => {
 
     if (useDatabase) {
       try {
-        // Calculate date range based on period parameter or explicit dates
-        // Use a wider range for database queries to get all available data
-        const startDate = start_date ? new Date(start_date) : getStartDateFromPeriod(period);
-        const endDate = end_date ? new Date(end_date) : new Date();
+        // Strategy: Get ALL data from database, then fill gap to current time from API
+        const now = new Date();
+        const veryOldDate = new Date('2020-01-01'); // Get all historical data
         
-        console.log(`Database query for ${symbol} ${timeframe}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+        console.log(`Database query for ${symbol} ${timeframe}: fetching all available data`);
         
-        // Debug: Check what's available in database for this symbol
-        const availableData = await marketDataService.getAvailableTimeframesForSymbol(symbol);
-        console.log(`Available timeframes in DB for ${symbol}:`, JSON.stringify(availableData));
-        
+        // Get ALL available data from database for this symbol/timeframe
         const dbData = await marketDataService.getHistoricalData(
           symbol,
           timeframe,
-          startDate,
-          endDate,
+          veryOldDate,
+          now,
           includeIndicators
         );
 
         if (dbData.length > 0) {
           console.log(`Retrieved ${dbData.length} bars from database for ${symbol} ${timeframe}`);
           
+          // Find the latest timestamp in database data
+          const latestDbTimestamp = dbData.reduce((max, bar) => {
+            const barTime = new Date(bar.timestamp).getTime();
+            return barTime > max ? barTime : max;
+          }, 0);
+          
+          const latestDbDate = new Date(latestDbTimestamp);
+          const timeSinceLastBar = now.getTime() - latestDbTimestamp;
+          const hourInMs = 60 * 60 * 1000;
+          
+          console.log(`Latest DB data: ${latestDbDate.toISOString()}, Current: ${now.toISOString()}`);
+          console.log(`Gap since last bar: ${(timeSinceLastBar / hourInMs).toFixed(1)} hours`);
+          
+          // If gap is more than 2 hours, fetch recent data from API to fill the gap
+          let combinedBars = [...dbData];
+          let dataSource = 'database';
+          
+          if (timeSinceLastBar > 2 * hourInMs) {
+            console.log(`Fetching gap data from API: ${latestDbDate.toISOString()} to ${now.toISOString()}`);
+            
+            try {
+              // Fetch from API starting from last DB point
+              const gapResponse = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
+                params: {
+                  symbol: symbol,
+                  timeframe: timeframe,
+                  start_date: latestDbDate.toISOString().split('T')[0],
+                  end_date: now.toISOString().split('T')[0],
+                  account_mode: account_mode || 'paper',
+                  secType: secType || 'STK',
+                  exchange: exchange || 'SMART',
+                  currency: currency || 'USD'
+                },
+                timeout: 30000
+              });
+              
+              if (gapResponse.data?.data && gapResponse.data.data.length > 0) {
+                // Filter API bars to only include those after latest DB timestamp
+                const newBars = gapResponse.data.data
+                  .filter((bar: any) => {
+                    const barTime = bar.time * 1000; // Convert to ms if in seconds
+                    return barTime > latestDbTimestamp;
+                  })
+                  .map((bar: any) => ({
+                    timestamp: new Date(bar.time * 1000).toISOString(),
+                    open: bar.open,
+                    high: bar.high,
+                    low: bar.low,
+                    close: bar.close,
+                    volume: bar.volume
+                  }));
+                
+                if (newBars.length > 0) {
+                  console.log(`Added ${newBars.length} new bars from API to fill gap`);
+                  combinedBars = [...dbData, ...newBars];
+                  dataSource = 'database+api';
+                  
+                  // Store the new bars in database for future use
+                  try {
+                    const contractData: Contract = {
+                      symbol: symbol,
+                      secType: secType || 'STK',
+                      exchange: exchange,
+                      currency: currency || 'USD'
+                    };
+                    const contractId = await marketDataService.getOrCreateContract(contractData);
+                    const barsToStore = newBars.map((bar: any) => ({
+                      timestamp: new Date(bar.timestamp),
+                      open: bar.open,
+                      high: bar.high,
+                      low: bar.low,
+                      close: bar.close,
+                      volume: bar.volume
+                    }));
+                    await marketDataService.storeCandlestickData(contractId, timeframe, barsToStore);
+                    console.log(`Stored ${newBars.length} new bars in database`);
+                  } catch (storeErr) {
+                    console.warn('Failed to store gap data in database:', storeErr);
+                  }
+                }
+              }
+            } catch (gapErr) {
+              console.warn('Failed to fetch gap data from API:', gapErr);
+              // Continue with database data only
+            }
+          }
+          
+          // Sort combined data by timestamp
+          combinedBars.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
           return res.json({
             symbol: symbol,
             timeframe: timeframe,
-            bars: dbData, // Use 'bars' for consistency with frontend expectations
-            source: 'database',
-            count: dbData.length,
+            bars: combinedBars,
+            source: dataSource,
+            count: combinedBars.length,
+            db_bars: dbData.length,
+            api_bars: combinedBars.length - dbData.length,
             last_updated: new Date().toISOString(),
-            start_date: startDate.toISOString(),
-            end_date: endDate.toISOString(),
+            latest_db_date: latestDbDate.toISOString(),
             timestamp: new Date().toISOString()
           });
         } else {
-          console.log(`No data found in database for ${symbol} ${timeframe} in range ${startDate.toISOString()} to ${endDate.toISOString()}`);
-          console.log(`Database has these timeframes for ${symbol}:`, availableData);
+          console.log(`No data found in database for ${symbol} ${timeframe}`);
         }
       } catch (dbError) {
         console.warn('Database query failed, falling back to IB service:', dbError);
