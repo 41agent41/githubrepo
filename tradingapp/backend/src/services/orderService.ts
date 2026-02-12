@@ -1,6 +1,6 @@
 import { dbService } from './database.js';
 import { tradingSetupService } from './tradingSetupService.js';
-import axios from 'axios';
+import { getDefaultBroker, BrokerOrderRequest, BrokerType } from './brokers/index.js';
 
 // Import WebSocket broadcast function (will be set from index.ts)
 let broadcastOrderStatusFn: ((order: OrderExecution) => void) | null = null;
@@ -9,7 +9,8 @@ export function setBroadcastOrderStatus(fn: (order: OrderExecution) => void) {
   broadcastOrderStatusFn = fn;
 }
 
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+// Get the default broker service (IB for now, but can be changed)
+const getBrokerService = () => getDefaultBroker();
 
 interface OrderExecution {
   id?: number;
@@ -29,7 +30,7 @@ interface OrderExecution {
 
 export const orderService = {
   /**
-   * Place order through IB Gateway
+   * Place order through broker service (supports multiple brokers)
    */
   async placeOrder(order: OrderExecution): Promise<OrderExecution> {
     try {
@@ -55,28 +56,29 @@ export const orderService = {
         }
       }
 
-      // Place order via IB service
-      console.log(`Placing ${order.action} order for ${symbol || 'contract'} ${order.quantity} shares`);
+      // Get the broker service
+      const broker = getBrokerService();
 
-      const ibOrderResponse = await axios.post(`${IB_SERVICE_URL}/orders/place`, {
-        symbol: symbol,
+      // Place order via broker service abstraction
+      console.log(`[${broker.brokerType}] Placing ${order.action} order for ${symbol || 'contract'} ${order.quantity} shares`);
+
+      const brokerOrderRequest: BrokerOrderRequest = {
+        symbol: symbol || '',
         action: order.action,
         quantity: order.quantity,
-        order_type: order.orderType === 'MARKET' ? 'MKT' : 
-                    order.orderType === 'LIMIT' ? 'LMT' : 
-                    order.orderType === 'STOP' ? 'STP' : 'STP LMT',
-        limit_price: order.orderType === 'LIMIT' ? order.price : undefined,
-        stop_price: order.orderType === 'STOP' ? order.price : undefined
-      }, {
-        timeout: 30000
-      });
+        orderType: order.orderType,
+        limitPrice: order.orderType === 'LIMIT' || order.orderType === 'STOP_LIMIT' ? order.price : undefined,
+        stopPrice: order.orderType === 'STOP' || order.orderType === 'STOP_LIMIT' ? order.price : undefined,
+        setupId: order.setupId,
+        signalId: order.signalId
+      };
 
-      const ibOrder = ibOrderResponse.data;
+      const brokerOrder = await broker.placeOrder(brokerOrderRequest);
 
       // Store order in database
       const storedOrder = await this.storeOrderExecution({
         ...order,
-        ibOrderId: ibOrder.order_id,
+        ibOrderId: parseInt(brokerOrder.brokerOrderId, 10) || undefined,
         status: 'submitted'
       });
 
@@ -318,13 +320,13 @@ export const orderService = {
   },
 
   /**
-   * Cancel order
+   * Cancel order via broker service (supports multiple brokers)
    */
   async cancelOrder(orderId: number): Promise<boolean> {
     const order = await this.getOrder(orderId);
     
     if (!order || !order.ibOrderId) {
-      throw new Error('Order not found or has no IB order ID');
+      throw new Error('Order not found or has no broker order ID');
     }
 
     if (['filled', 'cancelled', 'rejected'].includes(order.status)) {
@@ -332,12 +334,12 @@ export const orderService = {
     }
 
     try {
-      // Cancel order via IB service
-      await axios.post(`${IB_SERVICE_URL}/orders/cancel`, {
-        order_id: order.ibOrderId
-      }, {
-        timeout: 10000
-      });
+      // Get the broker service
+      const broker = getBrokerService();
+
+      // Cancel order via broker service abstraction
+      console.log(`[${broker.brokerType}] Cancelling order ${order.ibOrderId}`);
+      await broker.cancelOrder(String(order.ibOrderId));
 
       // Update order status
       const updatedOrder = await this.updateOrderStatus(orderId, 'cancelled');

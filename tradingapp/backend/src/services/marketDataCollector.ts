@@ -1,8 +1,9 @@
 import { tradingSetupService } from './tradingSetupService.js';
 import { marketDataService } from './marketDataService.js';
-import axios from 'axios';
+import { getDefaultBroker, HistoricalDataParams, Timeframe } from './brokers/index.js';
 
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+// Get the default broker service
+const getBrokerService = () => getDefaultBroker();
 
 interface CollectionResult {
   symbol: string;
@@ -117,20 +118,18 @@ export const marketDataCollector = {
         };
       }
 
-      // Fetch data from IB Gateway
-      console.log(`Collecting ${symbol} ${timeframe} data from IB Gateway...`);
+      // Fetch data from broker service
+      const broker = getBrokerService();
+      console.log(`[${broker.brokerType}] Collecting ${symbol} ${timeframe} data...`);
       
-      const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
-        params: {
-          symbol: symbol,
-          timeframe: timeframe,
-          period: period,
-          account_mode: 'paper'
-        },
-        timeout: 60000
-      });
-
-      const bars = response.data.bars || response.data.data || [];
+      const historicalParams: HistoricalDataParams = {
+        symbol: symbol,
+        timeframe: timeframe as Timeframe,
+        period: period
+      };
+      
+      const response = await broker.getHistoricalData(historicalParams);
+      const bars = response.bars || [];
       
       if (bars.length === 0) {
         return {
@@ -138,7 +137,7 @@ export const marketDataCollector = {
           timeframe,
           success: false,
           recordsCollected: 0,
-          error: 'No data received from IB Gateway'
+          error: `No data received from broker service`
         };
       }
 
@@ -153,9 +152,9 @@ export const marketDataCollector = {
         contractId = contract;
       }
 
-      // Convert and store data
-      const candlestickBars = bars.map((bar: any) => ({
-        timestamp: new Date(bar.time * 1000),
+      // Bars are already in the correct format from broker service
+      const candlestickBars = bars.map((bar) => ({
+        timestamp: bar.timestamp,
         open: bar.open,
         high: bar.high,
         low: bar.low,

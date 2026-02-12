@@ -1,7 +1,7 @@
 import { dbService } from './database.js';
 import { marketDataService, type CandlestickBar } from './marketDataService.js';
 import { tradingSetupService } from './tradingSetupService.js';
-import axios from 'axios';
+import { getDefaultBroker, HistoricalDataParams } from './brokers/index.js';
 
 // Import WebSocket broadcast function (will be set from index.ts)
 let broadcastStrategySignalFn: ((signal: StrategySignal) => void) | null = null;
@@ -10,7 +10,8 @@ export function setBroadcastStrategySignal(fn: (signal: StrategySignal) => void)
   broadcastStrategySignalFn = fn;
 }
 
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+// Get the default broker service
+const getBrokerService = () => getDefaultBroker();
 
 interface StrategySignal {
   id?: number;
@@ -112,25 +113,25 @@ export const strategyService = {
     // Calculate indicators if needed
     let dataWithIndicators = historicalData;
     if (indicators.length > 0) {
-      // Request indicator calculation from IB service
+      // Request indicator calculation via broker service abstraction
       try {
-        const response = await axios.get(`${IB_SERVICE_URL}/market-data/indicators`, {
-          params: {
-            symbol: symbol,
-            timeframe: timeframe,
-            period: '1M',
-            indicators: indicators.join(',')
-          },
-          timeout: 30000
-        });
+        const broker = getBrokerService();
+        
+        // Get historical data with indicators from broker
+        const historicalParams: HistoricalDataParams = {
+          symbol: symbol,
+          timeframe: timeframe as any,
+          period: '1M'
+        };
+        
+        const response = await broker.getHistoricalData(historicalParams);
 
-        // Merge indicator data with historical data
-        if (response.data.data && Array.isArray(response.data.data)) {
+        // Merge indicator data with historical data if available
+        if (response.bars && Array.isArray(response.bars)) {
           // Map indicator data to historical data by timestamp
           const indicatorMap = new Map();
-          response.data.data.forEach((bar: any) => {
-            const timestamp = new Date(bar.time * 1000);
-            indicatorMap.set(timestamp.getTime(), bar);
+          response.bars.forEach((bar: any) => {
+            indicatorMap.set(bar.timestamp.getTime(), bar);
           });
 
           // This is a simplified merge - in production, you'd want more robust matching
