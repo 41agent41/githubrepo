@@ -3,6 +3,8 @@ services:
     build: ./backend
     env_file: .env
     privileged: true
+    security_opt:
+      - seccomp:unconfined
     environment:
       - PORT=${BACKEND_PORT:-4000}
       - HOST=${BACKEND_HOST:-0.0.0.0}
@@ -38,6 +40,8 @@ services:
         - NODE_ENV=${NODE_ENV:-production}
     env_file: .env
     privileged: true
+    security_opt:
+      - seccomp:unconfined
     environment:
       - PORT=${FRONTEND_PORT:-3000}
       - HOST=${FRONTEND_HOST:-0.0.0.0}
@@ -56,6 +60,8 @@ services:
     build: ./ib_service
     env_file: .env
     privileged: true
+    security_opt:
+      - seccomp:unconfined
     environment:
       # IB Gateway connection is now configured via browser UI at /connections
       # These env vars are only used as fallback defaults if not configured in browser
@@ -85,6 +91,8 @@ services:
   redis:
     image: redis:7-alpine
     privileged: true
+    security_opt:
+      - seccomp:unconfined
     restart: unless-stopped
     ports:
       - "6379:6379"
