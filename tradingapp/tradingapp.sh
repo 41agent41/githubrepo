@@ -254,6 +254,9 @@ deploy_application() {
         exit 1
     fi
     
+    # Configure Docker daemon for headless Linux compatibility (ensures it's done before docker-compose)
+    configure_docker_daemon
+    
     # Clean deployment for reliability
     print_info "Cleaning previous deployment..."
     docker-compose down --remove-orphans 2>/dev/null || true
