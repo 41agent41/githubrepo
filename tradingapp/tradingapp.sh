@@ -73,11 +73,66 @@ check_requirements() {
     print_status "System requirements check passed"
 }
 
+configure_docker_daemon() {
+    print_info "Configuring Docker daemon for container compatibility..."
+    
+    DAEMON_JSON="/etc/docker/daemon.json"
+    
+    # Check if daemon.json exists and backup
+    if [ -f "$DAEMON_JSON" ]; then
+        print_info "Docker daemon.json exists, creating backup..."
+        sudo cp "$DAEMON_JSON" "${DAEMON_JSON}.backup.$(date +%Y%m%d%H%M%S)"
+    fi
+    
+    # Create or update daemon.json with required settings
+    sudo mkdir -p /etc/docker
+    
+    # Create daemon.json with settings to fix sysctl permission issues on headless Linux
+    sudo tee "$DAEMON_JSON" > /dev/null << 'DAEMON_EOF'
+{
+    "no-new-privileges": false,
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+    }
+}
+DAEMON_EOF
+    
+    print_status "Docker daemon.json configured"
+    
+    # Set sysctl on host for container compatibility
+    print_info "Setting host sysctl for container compatibility..."
+    sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0 2>/dev/null || true
+    
+    # Make sysctl permanent
+    if ! grep -q "net.ipv4.ip_unprivileged_port_start" /etc/sysctl.conf 2>/dev/null; then
+        echo "net.ipv4.ip_unprivileged_port_start=0" | sudo tee -a /etc/sysctl.conf > /dev/null
+        print_info "Added sysctl setting to /etc/sysctl.conf"
+    fi
+    
+    # Restart Docker to apply changes
+    print_info "Restarting Docker daemon..."
+    sudo systemctl restart docker
+    
+    # Wait for Docker to be ready
+    sleep 3
+    
+    if sudo systemctl is-active --quiet docker; then
+        print_status "Docker daemon configured and restarted successfully"
+    else
+        print_error "Docker daemon failed to restart"
+        return 1
+    fi
+}
+
 install_docker() {
     print_info "Installing Docker..."
     
     if command -v docker &> /dev/null; then
         print_status "Docker already installed: $(docker --version)"
+        # Still configure daemon for compatibility
+        configure_docker_daemon
         return 0
     fi
     
@@ -95,6 +150,9 @@ install_docker() {
     # Install Docker Compose
     sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
+    
+    # Configure Docker daemon for headless Linux compatibility
+    configure_docker_daemon
     
     print_status "Docker installed successfully"
     print_warning "Please log out and log back in for docker group changes to take effect"
