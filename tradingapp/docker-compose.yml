@@ -2,6 +2,10 @@ services:
   backend:
     build: ./backend
     env_file: .env
+    security_opt:
+      - no-new-privileges:false
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     environment:
       - PORT=${BACKEND_PORT:-4000}
       - HOST=${BACKEND_HOST:-0.0.0.0}
@@ -36,6 +40,10 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
         - NODE_ENV=${NODE_ENV:-production}
     env_file: .env
+    security_opt:
+      - no-new-privileges:false
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     environment:
       - PORT=${FRONTEND_PORT:-3000}
       - HOST=${FRONTEND_HOST:-0.0.0.0}
@@ -53,6 +61,10 @@ services:
   ib_service:
     build: ./ib_service
     env_file: .env
+    security_opt:
+      - no-new-privileges:false
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     environment:
       # IB Gateway connection is now configured via browser UI at /connections
       # These env vars are only used as fallback defaults if not configured in browser
