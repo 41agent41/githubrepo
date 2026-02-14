@@ -184,9 +184,12 @@ router.post('/profiles', async (req: Request, res: Response) => {
       });
     }
 
+    // Include underlying error so UI can show it (e.g. missing table/column = run migrations)
+    const detail = error.message || error.toString?.() || 'Unknown error';
     res.status(500).json({
       error: 'Failed to create profile',
-      message: error.message,
+      message: detail,
+      detail: detail,
       timestamp: new Date().toISOString()
     });
   }

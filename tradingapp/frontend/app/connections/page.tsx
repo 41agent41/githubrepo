@@ -154,8 +154,9 @@ export default function ConnectionsPage() {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save profile');
+        const data = await response.json().catch(() => ({}));
+        const message = data.message || data.detail || data.error || 'Failed to save profile';
+        throw new Error(message);
       }
 
       showSuccess(editingProfile ? 'Profile updated successfully' : 'Profile created successfully');
@@ -354,7 +355,7 @@ export default function ConnectionsPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            IB Connection Manager
+            Connection Manager
           </h1>
           <p className="text-gray-400 mt-2">
             Configure connections to IB Gateway or Trader Workstation (TWS) for live or paper trading
@@ -366,6 +367,11 @@ export default function ConnectionsPage() {
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300">
             <strong>Error:</strong> {error}
             <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-300">×</button>
+            {(error.includes('does not exist') || error.includes('relation ') || error.includes('column ')) && (
+              <p className="mt-2 text-sm text-gray-400">
+                If this mentions a missing table or column, run the backend database migrations (e.g. <code className="bg-slate-800 px-1 rounded">migration-ib-connections.sql</code> and <code className="bg-slate-800 px-1 rounded">migration-keepalive.sql</code>).
+              </p>
+            )}
           </div>
         )}
         {successMessage && (

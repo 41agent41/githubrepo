@@ -238,7 +238,7 @@ export function useTradingAccount() {
   return {
     isLiveTrading,
     setIsLiveTrading: () => {
-      console.warn('setIsLiveTrading is deprecated. Use IB Connection Manager to change account mode.');
+      console.warn('setIsLiveTrading is deprecated. Use Connection Manager to change account mode.');
     },
     accountMode: accountMode === 'unknown' ? 'paper' : accountMode,
     dataType: isLiveTrading ? 'real-time' as const : 'delayed' as const

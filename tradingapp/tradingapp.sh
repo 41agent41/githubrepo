@@ -220,7 +220,7 @@ test_ib_connection() {
     status_response=$(curl -s "http://${server_ip}:4000/api/ib-connections/status" 2>/dev/null)
     
     if [[ -z "$status_response" ]]; then
-        print_warning "Could not query IB Connection Manager (backend may still be starting)"
+        print_warning "Could not query Connection Manager (backend may still be starting)"
         print_info "IB connections are managed via the web UI at: http://${server_ip}:3000/connections"
         return 0  # Non-blocking - connection can be configured via UI
     fi
@@ -437,7 +437,7 @@ show_ib_help() {
         server_ip="${SERVER_IP:-localhost}"
     fi
     
-    echo "📱 IB Connection Manager (Recommended):"
+    echo "📱 Connection Manager (Recommended):"
     echo "   IB connections are now managed via the web UI!"
     echo "   Visit: http://${server_ip}:3000/connections"
     echo ""
