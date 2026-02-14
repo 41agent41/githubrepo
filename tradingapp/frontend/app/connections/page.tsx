@@ -41,16 +41,22 @@ interface ConnectionStatus {
   last_check: string;
 }
 
-// Get a readable error message (unwrap AggregateError from e.g. Promise.all / fetch)
+// Get a readable error message (unwrap AggregateError and other nested errors)
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
-    const name = (err as any).name;
-    const errors = (err as any).errors;
-    if (name === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
+    const e = err as Error & { name?: string; errors?: unknown[]; cause?: unknown };
+    const errors = e.errors;
+    if (e.name === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
       const first = errors[0];
       return first instanceof Error ? first.message : String(first);
     }
-    return err.message;
+    if (e.message === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0];
+      return first instanceof Error ? first.message : String(first);
+    }
+    if (e.cause instanceof Error) return e.cause.message;
+    if (e.cause != null) return String(e.cause);
+    return e.message;
   }
   return String(err);
 }
@@ -187,7 +193,8 @@ export default function ConnectionsPage() {
       setShowForm(false);
       setEditingProfile(null);
       resetForm();
-      await fetchProfiles();
+      // Refresh list in background so a failing refresh doesn't overwrite success
+      fetchProfiles().catch((e) => console.warn('Refresh after save failed:', e));
     } catch (err: any) {
       setError(getErrorMessage(err));
     }
@@ -397,14 +404,14 @@ export default function ConnectionsPage() {
                     If this mentions a missing table or column, run the backend database migrations (e.g. <code className="bg-slate-800 px-1 rounded">migration-ib-connections.sql</code> and <code className="bg-slate-800 px-1 rounded">migration-keepalive.sql</code>).
                   </p>
                 )}
-                {(error.includes('fetch profiles') || error.includes('fetch connection')) && (
+                {(error.includes('fetch profiles') || error.includes('fetch connection') || error.includes('Failed to fetch')) && (
                   <p className="mt-2 text-sm text-gray-400">
-                    Ensure the backend is running and reachable at the API URL. You can retry below.
+                    Ensure the backend is running and reachable. API: <code className="bg-slate-800 px-1 rounded text-cyan-300">{apiUrl}</code> — You can retry below.
                   </p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {(error.includes('fetch profiles') || error.includes('fetch connection')) && (
+                {(error.includes('fetch profiles') || error.includes('fetch connection') || error.includes('Failed to fetch')) && (
                   <button
                     type="button"
                     onClick={() => { setError(null); fetchProfiles(); fetchConnectionStatus(); }}
