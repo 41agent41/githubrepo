@@ -102,8 +102,11 @@ export default function ConnectionsPage() {
   const fetchProfiles = useCallback(async () => {
     try {
       const response = await fetch(`${apiUrl}/api/ib-connections/profiles`);
-      if (!response.ok) throw new Error('Failed to fetch profiles');
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data.message || data.error || 'Failed to fetch profiles';
+        throw new Error(message);
+      }
       setProfiles(data.profiles || []);
     } catch (err: any) {
       console.error('Error fetching profiles:', err);
@@ -386,13 +389,33 @@ export default function ConnectionsPage() {
         {/* Messages */}
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300">
-            <strong>Error:</strong> {error}
-            <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-300">×</button>
-            {(error.includes('does not exist') || error.includes('relation ') || error.includes('column ')) && (
-              <p className="mt-2 text-sm text-gray-400">
-                If this mentions a missing table or column, run the backend database migrations (e.g. <code className="bg-slate-800 px-1 rounded">migration-ib-connections.sql</code> and <code className="bg-slate-800 px-1 rounded">migration-keepalive.sql</code>).
-              </p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                <strong>Error:</strong> {error}
+                {(error.includes('does not exist') || error.includes('relation ') || error.includes('column ')) && (
+                  <p className="mt-2 text-sm text-gray-400">
+                    If this mentions a missing table or column, run the backend database migrations (e.g. <code className="bg-slate-800 px-1 rounded">migration-ib-connections.sql</code> and <code className="bg-slate-800 px-1 rounded">migration-keepalive.sql</code>).
+                  </p>
+                )}
+                {(error.includes('fetch profiles') || error.includes('fetch connection')) && (
+                  <p className="mt-2 text-sm text-gray-400">
+                    Ensure the backend is running and reachable at the API URL. You can retry below.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {(error.includes('fetch profiles') || error.includes('fetch connection')) && (
+                  <button
+                    type="button"
+                    onClick={() => { setError(null); fetchProfiles(); fetchConnectionStatus(); }}
+                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 p-1" aria-label="Dismiss">×</button>
+              </div>
+            </div>
           </div>
         )}
         {successMessage && (
