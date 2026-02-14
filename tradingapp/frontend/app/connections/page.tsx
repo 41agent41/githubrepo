@@ -41,6 +41,20 @@ interface ConnectionStatus {
   last_check: string;
 }
 
+// Get a readable error message (unwrap AggregateError from e.g. Promise.all / fetch)
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const name = (err as any).name;
+    const errors = (err as any).errors;
+    if (name === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0];
+      return first instanceof Error ? first.message : String(first);
+    }
+    return err.message;
+  }
+  return String(err);
+}
+
 // Default ports for different connection types
 const DEFAULT_PORTS = {
   gateway_paper: 4002,
@@ -93,7 +107,7 @@ export default function ConnectionsPage() {
       setProfiles(data.profiles || []);
     } catch (err: any) {
       console.error('Error fetching profiles:', err);
-      setError(err.message);
+      setError(getErrorMessage(err));
     }
   }, [apiUrl]);
 
@@ -109,11 +123,18 @@ export default function ConnectionsPage() {
     }
   }, [apiUrl]);
 
-  // Initial load
+  // Initial load (use allSettled so one failure doesn't throw AggregateError)
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchProfiles(), fetchConnectionStatus()]);
+      setError(null);
+      const [profilesResult, statusResult] = await Promise.allSettled([
+        fetchProfiles(),
+        fetchConnectionStatus()
+      ]);
+      if (profilesResult.status === 'rejected') {
+        setError(getErrorMessage(profilesResult.reason));
+      }
       setLoading(false);
     };
     loadData();
@@ -165,7 +186,7 @@ export default function ConnectionsPage() {
       resetForm();
       await fetchProfiles();
     } catch (err: any) {
-      setError(err.message);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -186,7 +207,7 @@ export default function ConnectionsPage() {
       showSuccess('Profile deleted successfully');
       await fetchProfiles();
     } catch (err: any) {
-      setError(err.message);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -208,7 +229,7 @@ export default function ConnectionsPage() {
       showSuccess('Connection activated successfully');
       await Promise.all([fetchProfiles(), fetchConnectionStatus()]);
     } catch (err: any) {
-      setError(err.message);
+      setError(getErrorMessage(err));
     } finally {
       setConnectingProfileId(null);
     }
@@ -229,7 +250,7 @@ export default function ConnectionsPage() {
       showSuccess('Connection deactivated successfully');
       await Promise.all([fetchProfiles(), fetchConnectionStatus()]);
     } catch (err: any) {
-      setError(err.message);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -248,7 +269,7 @@ export default function ConnectionsPage() {
       showSuccess('Default profile set successfully');
       await fetchProfiles();
     } catch (err: any) {
-      setError(err.message);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -265,7 +286,7 @@ export default function ConnectionsPage() {
       const data = await response.json();
       setTestResult(data.test_result);
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message });
+      setTestResult({ success: false, message: getErrorMessage(err) });
     } finally {
       setTestingProfileId(null);
     }
