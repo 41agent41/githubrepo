@@ -15,6 +15,8 @@ import ibConnectionRoutes from './routes/ibConnections.js';
 import systemSettingsRoutes from './routes/systemSettings.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
+import { systemSettingsService } from './services/systemSettingsService.js';
+import { getIBServiceUrl } from './config/runtimeConfig.js';
 import { backgroundJobs } from './services/backgroundJobs.js';
 import { strategyService, setBroadcastStrategySignal } from './services/strategyService.js';
 import { orderService, setBroadcastOrderStatus } from './services/orderService.js';
@@ -29,7 +31,6 @@ const io = new SocketIOServer(server, {
 });
 
 const PORT = (process.env.PORT ? parseInt(process.env.PORT, 10) : 4000);
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
 
 // Middleware
 app.use(cors());
@@ -39,7 +40,7 @@ app.use(express.json());
 app.get('/api/health', async (req, res) => {
   try {
     // Check IB service health
-    const ibResponse = await axios.get(`${IB_SERVICE_URL}/health`, { timeout: 5000 });
+    const ibResponse = await axios.get(`${getIBServiceUrl()}/health`, { timeout: 5000 });
     
     // Check database health
     const dbConnected = await dbService.testConnection();
@@ -59,7 +60,7 @@ app.get('/api/health', async (req, res) => {
         ib_service: {
           status: ibResponse.data?.status || 'unknown',
           connected: ibResponse.data?.connection?.ib_gateway?.connected || false,
-          url: IB_SERVICE_URL
+          url: getIBServiceUrl()
         }
       }
     });
@@ -82,7 +83,7 @@ app.get('/api/health', async (req, res) => {
         ib_service: {
           status: 'error',
           connected: false,
-          url: IB_SERVICE_URL,
+          url: getIBServiceUrl(),
           error: error instanceof Error ? error.message : 'Unknown error'
         }
       }
@@ -164,7 +165,7 @@ io.on('connection', (socket) => {
     
     try {
       // Subscribe to IB service
-      await axios.post(`${IB_SERVICE_URL}/market-data/subscribe`, {
+      await axios.post(`${getIBServiceUrl()}/market-data/subscribe`, {
         symbol: symbol,
         timeframe: timeframe
       });
@@ -186,7 +187,7 @@ io.on('connection', (socket) => {
     console.log(`Client ${socket.id} unsubscribing from ${symbol}`);
     
     try {
-      await axios.post(`${IB_SERVICE_URL}/market-data/unsubscribe`, {
+      await axios.post(`${getIBServiceUrl()}/market-data/unsubscribe`, {
         symbol: symbol
       });
       
@@ -288,10 +289,16 @@ process.on('SIGINT', async () => {
 });
 
 // Start server
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
+  // Load system settings from DB so runtime config (IB URL, etc.) uses DB values
+  try {
+    await systemSettingsService.loadAllSettings();
+  } catch (e) {
+    console.warn('System settings not loaded, using env fallback:', (e as Error).message);
+  }
   console.log(`Backend server running on port ${PORT}`);
-  console.log(`IB Service URL: ${IB_SERVICE_URL}`);
-  
+  console.log(`IB Service URL: ${getIBServiceUrl()}`);
+
   // Test database connection on startup
   dbService.testConnection().then(connected => {
     if (connected) {

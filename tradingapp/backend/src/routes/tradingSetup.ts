@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { tradingSetupService } from '../services/tradingSetupService.js';
 import { marketDataCollector } from '../services/marketDataCollector.js';
 import { strategyService } from '../services/strategyService.js';
+import { getFrontendUrl } from '../config/runtimeConfig.js';
 
 const router = express.Router();
 
@@ -67,7 +68,7 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Generate chart URLs
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const baseUrl = getFrontendUrl();
     const indicatorsParam = setup.indicators.length > 0 ? `&indicators=${setup.indicators.join(',')}` : '';
     const strategiesParam = setup.strategies.length > 0 ? `&strategies=${setup.strategies.join(',')}` : '';
     const portParam = setup.port ? `&port=${setup.port}` : '';

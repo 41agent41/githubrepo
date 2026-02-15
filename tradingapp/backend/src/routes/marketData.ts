@@ -4,7 +4,7 @@ import axios from 'axios';
 import { marketDataService, type Contract, type CandlestickBar, type TechnicalIndicator } from '../services/marketDataService.js';
 
 const router = express.Router();
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+import { getIBServiceUrl } from '../config/runtimeConfig.js';
 
 // Interface for market data request parameters
 interface MarketDataQuery {
@@ -100,7 +100,7 @@ router.post('/search', async (req: Request, res: Response) => {
 
     console.log(`Searching for contract: ${symbol} (${secType}) on ${exchange || 'any exchange'}`);
 
-    const response = await axios.post(`${IB_SERVICE_URL}/contract/search`, {
+    const response = await axios.post(`${getIBServiceUrl()}/contract/search`, {
       symbol: symbol,
       secType: secType,
       exchange: exchange,
@@ -202,7 +202,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
 
     console.log(`Advanced search for: ${secType} ${symbol || ''} on ${exchange || 'any exchange'}`);
 
-    const response = await axios.post(`${IB_SERVICE_URL}/contract/advanced-search`, {
+    const response = await axios.post(`${getIBServiceUrl()}/contract/advanced-search`, {
       symbol: symbol,
       secType: secType,
       exchange: exchange,
@@ -395,7 +395,7 @@ router.get('/history', async (req: Request, res: Response) => {
             
             try {
               // Fetch from API using period (more reliable than date ranges)
-              const gapResponse = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
+              const gapResponse = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
                 params: {
                   symbol: symbol,
                   timeframe: timeframe,
@@ -489,7 +489,7 @@ router.get('/history', async (req: Request, res: Response) => {
     // Fallback to IB service
     console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period}`);
 
-    const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
+    const response = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
       params: {
         symbol: symbol,
         timeframe: timeframe,
@@ -626,7 +626,7 @@ router.get('/realtime', async (req: Request, res: Response) => {
 
     console.log(`Fetching real-time data for ${symbol}`);
 
-    const response = await axios.get(`${IB_SERVICE_URL}/market-data/realtime`, {
+    const response = await axios.get(`${getIBServiceUrl()}/market-data/realtime`, {
       params: {
         symbol: symbol,
         account_mode: account_mode
@@ -738,7 +738,7 @@ router.get('/indicators', async (req: Request, res: Response) => {
     // Fallback to IB service
     console.log(`Calculating technical indicators for ${symbol} ${timeframe}`);
 
-    const response = await axios.get(`${IB_SERVICE_URL}/market-data/indicators`, {
+    const response = await axios.get(`${getIBServiceUrl()}/market-data/indicators`, {
       params: {
         symbol: symbol,
         timeframe: timeframe,
@@ -972,7 +972,7 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
           console.log(`Request params for ${symbol} ${timeframe}:`, requestParams);
           
           // Fetch data from IB service
-          const response = await axios.get(`${IB_SERVICE_URL}/market-data/history`, {
+          const response = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
             params: requestParams,
             timeout: 60000 // Increased to 60 second timeout for bulk operations
           });
@@ -1249,7 +1249,7 @@ router.get('/health', async (req: Request, res: Response) => {
 
     // Check IB service health
     try {
-      const response = await axios.get(`${IB_SERVICE_URL}/health`, { timeout: 5000 });
+      const response = await axios.get(`${getIBServiceUrl()}/health`, { timeout: 5000 });
       health.ib_service = response.status === 200;
     } catch (error) {
       console.error('IB service health check failed:', error);
@@ -1369,7 +1369,7 @@ router.get('/stream', async (req: Request, res: Response) => {
     const lastHistoricalTime = latestData.length > 0 ? latestData[0].timestamp : null;
 
     // Get current real-time data
-    const realtimeResponse = await axios.get(`${IB_SERVICE_URL}/market-data/realtime`, {
+    const realtimeResponse = await axios.get(`${getIBServiceUrl()}/market-data/realtime`, {
       params: {
         symbol: symbol,
         account_mode: account_mode

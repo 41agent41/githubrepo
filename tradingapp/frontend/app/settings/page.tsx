@@ -23,6 +23,7 @@ interface SettingsGroup {
 
 // Category display names and icons
 const CATEGORY_INFO: Record<string, { name: string; icon: string; description: string }> = {
+  deployment: { name: 'Deployment & URLs', icon: '🖥️', description: 'Server IP, ports, and service URLs (replaces most .env values)' },
   cors: { name: 'CORS Settings', icon: '🔒', description: 'Cross-Origin Resource Sharing configuration' },
   redis: { name: 'Redis Cache', icon: '💾', description: 'Redis caching configuration' },
   security: { name: 'Security', icon: '🛡️', description: 'Authentication and security settings' },
@@ -49,10 +50,13 @@ export default function SettingsPage() {
   const fetchSettings = useCallback(async () => {
     try {
       const response = await fetch(`${apiUrl}/api/system-settings`);
-      if (!response.ok) throw new Error('Failed to fetch settings');
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data.message || data.error || 'Failed to fetch settings';
+        throw new Error(message);
+      }
       setSettings(data.settings || {});
-      
+
       // Set first category as active if none selected
       if (!activeCategory && data.settings) {
         const categories = Object.keys(data.settings);
@@ -257,7 +261,11 @@ export default function SettingsPage() {
     );
   }
 
-  const categories = Object.keys(settings);
+  const categories = Object.keys(settings).sort((a, b) => {
+    if (a === 'deployment') return -1;
+    if (b === 'deployment') return 1;
+    return a.localeCompare(b);
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-8">
@@ -277,8 +285,28 @@ export default function SettingsPage() {
         {/* Messages */}
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-300">
-            <strong>Error:</strong> {error}
-            <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-300">×</button>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                <strong>Error:</strong> {error}
+                {(error.includes('fetch settings') || error.includes('5432') || error.includes('ECONNREFUSED')) && (
+                  <p className="mt-2 text-sm text-gray-400">
+                    Ensure the backend is running and can reach the database. Only database connection (POSTGRES_*) must be in .env; other settings are configured here once the app is running.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {(error.includes('fetch settings') || error.includes('Failed to fetch')) && (
+                  <button
+                    type="button"
+                    onClick={() => { setError(null); fetchSettings(); }}
+                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 p-1" aria-label="Dismiss">×</button>
+              </div>
+            </div>
           </div>
         )}
         {successMessage && (

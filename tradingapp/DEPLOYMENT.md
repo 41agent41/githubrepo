@@ -253,7 +253,38 @@ docker system prune -a -f
 docker-compose build --no-cache
 ```
 
-### Issue 2: IB Service Connection Issues
+### Issue 2: Backend cannot reach database (ECONNREFUSED 127.0.0.1:5432)
+
+**Symptoms**: Backend logs show `Error: connect ECONNREFUSED 127.0.0.1:5432` or `::1:5432`. Connection Manager shows "Failed to fetch connection profiles" or similar. The backend API root (e.g. `http://10.7.3.20:4000`) may load, but any endpoint that uses the database fails.
+
+**Cause**: The backend is trying to connect to PostgreSQL on `localhost:5432`, but no database is listening there. Docker Compose does not include a PostgreSQL service; you must use an external database or run PostgreSQL separately.
+
+**Solutions**:
+
+1. **Use an external database** (e.g. PostgreSQL or TimescaleDB on another host):
+   ```bash
+   # In .env on the app server, set the database host to the machine where PostgreSQL runs:
+   POSTGRES_HOST=10.7.3.21
+   POSTGRES_PORT=5432
+   POSTGRES_USER=tradingapp
+   POSTGRES_PASSWORD=your_password
+   POSTGRES_DB=tradingapp
+   ```
+   Replace `10.7.3.21` with your actual database server IP or hostname. Then restart the backend:
+   ```bash
+   docker-compose restart backend
+   ```
+
+2. **Ensure PostgreSQL is running** on that host and is reachable from the app server:
+   ```bash
+   # From the app server, test connectivity:
+   nc -zv 10.7.3.21 5432
+   # or: telnet 10.7.3.21 5432
+   ```
+
+3. **Run migrations** on the database so the backend tables exist (see `backend/src/database/` and SETUP_GUIDE.md). At minimum, run `migration-ib-connections.sql` and `migration-keepalive.sql` for Connection Manager profiles.
+
+### Issue 3: IB Service Connection Issues
 
 **Symptoms**: IB service can't connect to IB Gateway
 
@@ -269,7 +300,7 @@ telnet your-ib-gateway-ip 4002
 docker-compose restart ib_service
 ```
 
-### Issue 3: Frontend Can't Connect to Backend
+### Issue 4: Frontend Can't Connect to Backend
 
 **Symptoms**: Frontend shows connection errors
 
@@ -285,7 +316,7 @@ curl http://your-server-ip:4000/health
 grep CORS_ORIGINS .env
 ```
 
-### Issue 4: Port Conflicts
+### Issue 5: Port Conflicts
 
 **Symptoms**: Services fail to start due to port conflicts
 
@@ -301,7 +332,7 @@ nano .env
 nano docker-compose.yml
 ```
 
-### Issue 5: Permission Errors
+### Issue 6: Permission Errors
 
 **Symptoms**: Permission denied errors in containers
 

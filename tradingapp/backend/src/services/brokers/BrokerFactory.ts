@@ -9,6 +9,7 @@
 import { IBrokerService } from './IBrokerService.js';
 import { IBBrokerService } from './IBBroker.js';
 import { BrokerType, BrokerError } from '../../types/broker.js';
+import { getIBServiceUrl } from '../../config/runtimeConfig.js';
 
 /**
  * Broker configuration options
@@ -28,9 +29,9 @@ class BrokerFactory {
   private configs: Map<BrokerType, BrokerConfig> = new Map();
 
   constructor() {
-    // Initialize with default configurations from environment
+    // Initialize with default configurations (from System Settings or env)
     this.configs.set('IB', {
-      serviceUrl: process.env.IB_SERVICE_URL || 'http://ib_service:8000'
+      serviceUrl: getIBServiceUrl()
     });
     
     // MT5 and cTrader configs will be added when those brokers are implemented

@@ -409,6 +409,11 @@ export default function ConnectionsPage() {
                     Ensure the backend is running and reachable. API: <code className="bg-slate-800 px-1 rounded text-cyan-300">{apiUrl}</code> — You can retry below.
                   </p>
                 )}
+                {(error.includes('5432') || error.includes('ECONNREFUSED') || error.includes('connect ECONNREFUSED')) && (
+                  <p className="mt-2 text-sm text-gray-400">
+                    Database connection error: the backend cannot reach PostgreSQL. Set <code className="bg-slate-800 px-1 rounded">POSTGRES_HOST</code> in <code className="bg-slate-800 px-1 rounded">.env</code> to your database server (e.g. <code className="bg-slate-800 px-1 rounded">10.7.3.21</code>), then restart the backend. See DEPLOYMENT.md → Common Issues.
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {(error.includes('fetch profiles') || error.includes('fetch connection') || error.includes('Failed to fetch')) && (

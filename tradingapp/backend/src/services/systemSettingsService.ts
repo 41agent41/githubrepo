@@ -21,6 +21,7 @@ export interface SystemSetting {
 
 // Setting categories
 export type SettingCategory = 
+  | 'deployment'
   | 'cors'
   | 'redis'
   | 'security'
@@ -33,6 +34,14 @@ export type SettingCategory =
 
 // Parsed settings by category
 export interface ParsedSettings {
+  deployment: {
+    server_ip: string;
+    frontend_port: number;
+    backend_port: number;
+    ib_service_port: number;
+    ib_service_url: string;
+    frontend_url: string;
+  };
   cors: {
     allowed_origins: string;
     allow_credentials: boolean;
@@ -355,6 +364,39 @@ class SystemSettingsService {
       methods: settings.allowed_methods.split(',').map(m => m.trim()),
       allowedHeaders: settings.allowed_headers === '*' ? ['*'] : settings.allowed_headers.split(',').map(h => h.trim())
     };
+  }
+
+  // Get deployment/server value from cache (sync). Returns null if not loaded or not set.
+  getCachedDeploymentValue(key: string): string | null {
+    const cacheKey = this.getCacheKey('deployment', key);
+    const setting = this.settingsCache.get(cacheKey);
+    const raw = setting?.value;
+    if (raw === undefined || raw === null || raw === '') return null;
+    return String(raw);
+  }
+
+  // Get deployment configuration (async, loads cache if needed). Uses env fallback when deployment rows not yet in DB.
+  async getDeploymentConfig(): Promise<ParsedSettings['deployment']> {
+    try {
+      const settings = await this.getParsedCategorySettings('deployment');
+      return {
+        server_ip: settings?.server_ip ?? process.env.SERVER_IP ?? '',
+        frontend_port: Number(settings?.frontend_port) || parseInt(process.env.FRONTEND_PORT || '3000', 10),
+        backend_port: Number(settings?.backend_port) || parseInt(process.env.BACKEND_PORT || '4000', 10),
+        ib_service_port: Number(settings?.ib_service_port) || parseInt(process.env.IB_SERVICE_PORT || '8000', 10),
+        ib_service_url: settings?.ib_service_url || process.env.IB_SERVICE_URL || 'http://ib_service:8000',
+        frontend_url: settings?.frontend_url || process.env.FRONTEND_URL || 'http://localhost:3000'
+      };
+    } catch {
+      return {
+        server_ip: process.env.SERVER_IP ?? '',
+        frontend_port: parseInt(process.env.FRONTEND_PORT || '3000', 10),
+        backend_port: parseInt(process.env.BACKEND_PORT || '4000', 10),
+        ib_service_port: parseInt(process.env.IB_SERVICE_PORT || '8000', 10),
+        ib_service_url: process.env.IB_SERVICE_URL || 'http://ib_service:8000',
+        frontend_url: process.env.FRONTEND_URL || 'http://localhost:3000'
+      };
+    }
   }
 
   // Get Redis configuration

@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import axios from 'axios';
 
 const router = express.Router();
-const IB_SERVICE_URL = process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+import { getIBServiceUrl } from '../config/runtimeConfig.js';
 
 // Interface for account data - basic required fields only for optimal performance
 interface AccountSummary {
@@ -78,7 +78,7 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     console.log('Fetching account summary from IB service');
 
-    const response = await axios.get(`${IB_SERVICE_URL}/account/summary`, {
+    const response = await axios.get(`${getIBServiceUrl()}/account/summary`, {
       timeout: 20000, // 20 second timeout for account data
       headers: {
         'Connection': 'close'
@@ -111,7 +111,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       error: 'Failed to fetch account summary',
       detail: errorMessage,
       ib_service_status: statusCode,
-      ib_service_url: IB_SERVICE_URL,
+      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -127,7 +127,7 @@ router.get('/positions', async (req: Request, res: Response) => {
 
     console.log('Fetching account positions from IB service');
 
-    const response = await axios.get(`${IB_SERVICE_URL}/account/positions`, {
+    const response = await axios.get(`${getIBServiceUrl()}/account/positions`, {
       timeout: 20000, // 20 second timeout
       headers: {
         'Connection': 'close'
@@ -164,7 +164,7 @@ router.get('/positions', async (req: Request, res: Response) => {
       error: 'Failed to fetch account positions',
       detail: errorMessage,
       ib_service_status: statusCode,
-      ib_service_url: IB_SERVICE_URL,
+      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -180,7 +180,7 @@ router.get('/orders', async (req: Request, res: Response) => {
 
     console.log('Fetching account orders from IB service');
 
-    const response = await axios.get(`${IB_SERVICE_URL}/account/orders`, {
+    const response = await axios.get(`${getIBServiceUrl()}/account/orders`, {
       timeout: 20000, // 20 second timeout
       headers: {
         'Connection': 'close'
@@ -217,7 +217,7 @@ router.get('/orders', async (req: Request, res: Response) => {
       error: 'Failed to fetch account orders',
       detail: errorMessage,
       ib_service_status: statusCode,
-      ib_service_url: IB_SERVICE_URL,
+      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -233,7 +233,7 @@ router.get('/all', async (req: Request, res: Response) => {
 
     console.log('Fetching all account data from IB service');
 
-    const response = await axios.get(`${IB_SERVICE_URL}/account/all`, {
+    const response = await axios.get(`${getIBServiceUrl()}/account/all`, {
       timeout: 30000, // 30 second timeout for comprehensive data
       headers: {
         'Connection': 'close'
@@ -266,7 +266,7 @@ router.get('/all', async (req: Request, res: Response) => {
       error: 'Failed to fetch all account data',
       detail: errorMessage,
       ib_service_status: statusCode,
-      ib_service_url: IB_SERVICE_URL,
+      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -277,7 +277,7 @@ router.get('/connection', async (req: Request, res: Response) => {
   try {
     console.log('Checking IB Gateway connection status');
 
-    const response = await axios.get(`${IB_SERVICE_URL}/connection`, {
+    const response = await axios.get(`${getIBServiceUrl()}/connection`, {
       timeout: 10000, // 10 second timeout for connection check
       headers: {
         'Connection': 'close'
@@ -311,7 +311,7 @@ router.get('/connection', async (req: Request, res: Response) => {
       detail: errorMessage,
       connected: false,
       ib_service_status: statusCode,
-      ib_service_url: IB_SERVICE_URL,
+      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }

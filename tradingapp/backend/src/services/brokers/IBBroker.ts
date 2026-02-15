@@ -28,6 +28,7 @@ import {
   BrokerConnectionError,
   BrokerOrderError
 } from '../../types/broker.js';
+import { getIBServiceUrl } from '../../config/runtimeConfig.js';
 
 /**
  * IB-specific configuration extensions
@@ -46,7 +47,7 @@ export class IBBrokerService extends BaseBrokerService {
   private currentAccountMode: AccountMode = 'paper';
 
   constructor(serviceUrl?: string) {
-    const url = serviceUrl || process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+    const url = serviceUrl || getIBServiceUrl();
     super(url);
     
     this.httpClient = axios.create({

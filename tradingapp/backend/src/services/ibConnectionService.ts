@@ -1,4 +1,5 @@
 import { dbService } from './database.js';
+import { getIBServiceUrl } from '../config/runtimeConfig.js';
 import axios from 'axios';
 
 // IB Connection Profile interface
@@ -71,7 +72,7 @@ class IBConnectionService {
   
   // Get the IB service URL based on active profile or default
   getIBServiceUrl(): string {
-    return process.env.IB_SERVICE_URL || 'http://ib_service:8000';
+    return getIBServiceUrl();
   }
 
   // Get all connection profiles
