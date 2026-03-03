@@ -33,7 +33,7 @@ export function getBrokerFromRequest(req: Request): BrokerType {
     (typeof fromQuery === 'string' ? fromQuery : Array.isArray(fromQuery) ? fromQuery[0] : undefined) ??
     (typeof fromHeader === 'string' ? fromHeader : Array.isArray(fromHeader) ? fromHeader[0] : undefined);
 
-  const normalized = raw?.toUpperCase()?.trim();
+  const normalized = typeof raw === 'string' ? raw.toUpperCase().trim() : undefined;
   if (normalized && VALID_BROKERS.includes(normalized as BrokerType)) {
     return normalized as BrokerType;
   }

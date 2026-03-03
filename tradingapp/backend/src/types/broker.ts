@@ -320,7 +320,8 @@ export interface BrokerConnectionConfig {
   // Connection settings
   host?: string;
   port?: number;
-  clientId?: number;
+  /** IB uses numeric client ID; cTrader OAuth uses string client ID */
+  clientId?: number | string;
   
   // Timeouts
   timeoutSeconds?: number;

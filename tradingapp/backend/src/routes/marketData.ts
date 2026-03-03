@@ -382,13 +382,13 @@ router.get('/history', async (req: Request, res: Response) => {
 
               if (gapResponse.bars && gapResponse.bars.length > 0) {
                 // Filter API bars to only include those after latest DB timestamp
-                const newBars = gapResponse.bars
+                const newBars: CandlestickBar[] = gapResponse.bars
                   .filter((bar) => {
                     const barTime = bar.timestamp instanceof Date ? bar.timestamp.getTime() : (bar as any).time * 1000;
                     return barTime > latestDbTimestamp;
                   })
                   .map((bar) => ({
-                    timestamp: bar.timestamp instanceof Date ? bar.timestamp.toISOString() : new Date((bar as any).time * 1000).toISOString(),
+                    timestamp: bar.timestamp instanceof Date ? bar.timestamp : new Date((bar as any).time * 1000),
                     open: bar.open,
                     high: bar.high,
                     low: bar.low,
@@ -1304,14 +1304,15 @@ router.get('/stream', async (req: Request, res: Response) => {
         new Date(Math.floor(currentTime.getTime() / (getTimeframeMinutes(timeframe) * 60 * 1000)) * (getTimeframeMinutes(timeframe) * 60 * 1000)) :
         lastHistoricalTime!;
 
-      const newBar = {
+      const lastPrice = realtimeData.last ?? 0;
+      const lastVolume = realtimeData.volume ?? 0;
+      const newBar: CandlestickBar = {
         timestamp: barTimestamp,
-        open: shouldCreateNewBar ? realtimeData.last : latestData[0].open,
-        high: shouldCreateNewBar ? realtimeData.last : Math.max(latestData[0].high, realtimeData.last),
-        low: shouldCreateNewBar ? realtimeData.last : Math.min(latestData[0].low, realtimeData.last),
-        close: realtimeData.last,
-        volume: shouldCreateNewBar ? realtimeData.volume : latestData[0].volume + realtimeData.volume
-        // WAP and count fields removed
+        open: shouldCreateNewBar ? lastPrice : latestData[0].open,
+        high: shouldCreateNewBar ? lastPrice : Math.max(latestData[0].high, lastPrice),
+        low: shouldCreateNewBar ? lastPrice : Math.min(latestData[0].low, lastPrice),
+        close: lastPrice,
+        volume: shouldCreateNewBar ? lastVolume : latestData[0].volume + lastVolume
       };
 
       // Store the new/updated bar

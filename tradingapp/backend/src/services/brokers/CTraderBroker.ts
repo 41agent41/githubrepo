@@ -33,7 +33,6 @@ import { getBrokerServiceUrl } from '../../config/runtimeConfig.js';
  * cTrader-specific configuration (OAuth tokens, etc.)
  */
 interface CTraderConnectionConfig extends BrokerConnectionConfig {
-  clientId?: string;
   clientSecret?: string;
   accessToken?: string;
   refreshToken?: string;
@@ -65,19 +64,20 @@ export class CTraderBrokerService extends BaseBrokerService {
   // Connection Management
   // ============================================================================
 
-  async connect(config: CTraderConnectionConfig): Promise<BrokerConnectionStatusResponse> {
+  async connect(config: BrokerConnectionConfig): Promise<BrokerConnectionStatusResponse> {
     try {
+      const ctraderConfig = config as CTraderConnectionConfig;
       const response = await this.httpClient.post('/connection/connect', {
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-        redirect_uri: config.redirectUri,
-        auth_code: (config as any).authCode,
-        account_mode: config.accountMode || 'paper'
+        client_id: ctraderConfig.clientId != null ? String(ctraderConfig.clientId) : undefined,
+        client_secret: ctraderConfig.clientSecret,
+        redirect_uri: ctraderConfig.redirectUri,
+        auth_code: (ctraderConfig as any).authCode,
+        account_mode: ctraderConfig.accountMode || 'paper'
       }, {
         timeout: 15000
       });
 
-      this.currentAccountMode = (config.accountMode || 'paper') as AccountMode;
+      this.currentAccountMode = (ctraderConfig.accountMode || 'paper') as AccountMode;
 
       return {
         brokerType: 'CTRADER',
@@ -129,7 +129,7 @@ export class CTraderBrokerService extends BaseBrokerService {
     }
   }
 
-  async testConnection(config: CTraderConnectionConfig): Promise<{ success: boolean; message: string; details?: any }> {
+  async testConnection(config: BrokerConnectionConfig): Promise<{ success: boolean; message: string; details?: any }> {
     try {
       const response = await this.httpClient.get('/health', { timeout: 5000 });
       return {
