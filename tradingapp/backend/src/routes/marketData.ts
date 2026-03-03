@@ -128,7 +128,7 @@ router.post('/search', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? contractIdVal : undefined
+          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {
@@ -238,7 +238,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? contractIdVal : undefined
+          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {
