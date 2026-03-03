@@ -22,7 +22,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 ENV PATH=/usr/local/bin:$PATH
 ENV PYTHONPATH=/app
 
-COPY ctrader_service/ ./  # context: tradingapp root
+COPY ctrader_service/ ./
 RUN chown -R ctrader:ctrader /app
 
 USER ctrader
