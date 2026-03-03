@@ -113,6 +113,9 @@ router.post('/search', async (req: Request, res: Response) => {
     // Store contracts in database for future reference
     for (const contract of contracts) {
       try {
+        const contractIdNum = contract.contractId != null
+          ? (typeof contract.contractId === 'number' ? contract.contractId : parseInt(String(contract.contractId), 10))
+          : undefined;
         const contractData: Contract = {
           symbol: contract.symbol,
           secType: contract.securityType,
@@ -123,7 +126,7 @@ router.post('/search', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contract.contractId
+          contractId: Number.isNaN(contractIdNum as number) ? undefined : contractIdNum
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {
@@ -218,6 +221,9 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
 
     for (const contract of contracts) {
       try {
+        const contractIdNum = contract.contractId != null
+          ? (typeof contract.contractId === 'number' ? contract.contractId : parseInt(String(contract.contractId), 10))
+          : undefined;
         const contractData: Contract = {
           symbol: contract.symbol,
           secType: contract.securityType,
@@ -228,7 +234,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contract.contractId
+          contractId: Number.isNaN(contractIdNum as number) ? undefined : contractIdNum
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {

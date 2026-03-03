@@ -141,7 +141,7 @@ export class IBBrokerService extends BaseBrokerService {
       const response = await this.httpClient.post('/connection/test', {
         host: config.host || '127.0.0.1',
         port: config.port || 4001,
-        client_id: (config.clientId || 1) + 100, // Use different client ID for testing
+        client_id: Number(config.clientId ?? 1) + 100, // Use different client ID for testing
         timeout: config.timeoutSeconds || 15,
         connection_type: config.connectionType || 'gateway',
         account_mode: config.accountMode || 'paper'
