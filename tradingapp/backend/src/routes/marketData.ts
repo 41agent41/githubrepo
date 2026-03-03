@@ -102,8 +102,8 @@ router.post('/search', async (req: Request, res: Response) => {
       strike: c.strike,
       right: c.right,
       localSymbol: c.localSymbol,
-      contractId: c.contractId,
-      conId: c.contractId,
+      contractId: c.contractId != null ? String(c.contractId) : undefined,
+      conId: c.contractId != null ? String(c.contractId) : undefined,
       longName: c.description,
       description: c.description
     }));
@@ -118,6 +118,8 @@ router.post('/search', async (req: Request, res: Response) => {
           cid != null
             ? (typeof cid === 'number' ? cid : parseInt(String(cid), 10))
             : undefined;
+        const contractIdStr: string | undefined =
+          contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined;
         const contractData: Contract = {
           symbol: contract.symbol,
           secType: contract.securityType,
@@ -128,7 +130,7 @@ router.post('/search', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined
+          contractId: contractIdStr
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {
@@ -213,8 +215,8 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
       strike: c.strike,
       right: c.right,
       localSymbol: c.localSymbol,
-      contractId: c.contractId,
-      conId: c.contractId,
+      contractId: c.contractId != null ? String(c.contractId) : undefined,
+      conId: c.contractId != null ? String(c.contractId) : undefined,
       longName: c.description,
       description: c.description
     }));
@@ -228,6 +230,8 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
           cid != null
             ? (typeof cid === 'number' ? cid : parseInt(String(cid), 10))
             : undefined;
+        const contractIdStr: string | undefined =
+          contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined;
         const contractData: Contract = {
           symbol: contract.symbol,
           secType: contract.securityType,
@@ -238,7 +242,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
           strike: contract.strike,
           right: contract.right,
           localSymbol: contract.localSymbol,
-          contractId: contractIdVal !== undefined && !Number.isNaN(contractIdVal) ? String(contractIdVal) : undefined
+          contractId: contractIdStr
         };
         await marketDataService.getOrCreateContract(contractData);
       } catch (error) {

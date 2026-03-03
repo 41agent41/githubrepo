@@ -204,8 +204,8 @@ export interface BrokerContract {
   exchange?: string;
   currency: string;
   
-  // Optional contract details
-  contractId?: number;
+  // Optional contract details (IB: number; cTrader symbolId may be string)
+  contractId?: number | string;
   multiplier?: number;
   expiry?: string;
   strike?: number;

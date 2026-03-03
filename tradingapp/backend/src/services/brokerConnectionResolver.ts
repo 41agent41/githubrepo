@@ -65,6 +65,9 @@ function mapCTraderProfileToConfig(profile: CTraderConnectionProfile): BrokerCon
     name: profile.name,
     description: profile.description ?? undefined,
     accountMode: profile.account_mode as AccountMode,
+    clientId: profile.client_id,
+    clientSecret: profile.client_secret_encrypted,
+    redirectUri: profile.redirect_uri,
     settings: {
       clientId: profile.client_id,
       clientSecret: profile.client_secret_encrypted,
@@ -74,7 +77,7 @@ function mapCTraderProfileToConfig(profile: CTraderConnectionProfile): BrokerCon
       tokenExpiresAt: profile.token_expires_at,
       ctraderAccountId: profile.ctrader_account_id
     }
-  };
+  } as BrokerConnectionConfig;
 }
 
 /**
