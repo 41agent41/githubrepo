@@ -22,7 +22,8 @@ export interface Contract {
   strike?: number;
   right?: string;
   localSymbol?: string;
-  contractId?: number;
+  /** Broker contract id; may be number (IB) or string (e.g. cTrader symbolId) for API compatibility */
+  contractId?: number | string;
 }
 
 export interface TechnicalIndicator {
@@ -48,6 +49,10 @@ export class MarketDataService {
       RETURNING id
     `;
     
+    const contractIdParam =
+      contract.contractId != null
+        ? (typeof contract.contractId === 'number' ? contract.contractId : parseInt(String(contract.contractId), 10))
+        : null;
     const params = [
       contract.symbol,
       contract.secType,
@@ -58,7 +63,7 @@ export class MarketDataService {
       contract.strike || null,
       contract.right || null,
       contract.localSymbol || null,
-      contract.contractId || null
+      Number.isNaN(contractIdParam as number) ? null : contractIdParam
     ];
     
     const result = await dbService.query(query, params);
