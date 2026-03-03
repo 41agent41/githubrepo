@@ -3,6 +3,13 @@ TWS API Service - Using official Interactive Brokers TWS API for reliable IB Gat
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory for shared package (when running locally; Docker uses PYTHONPATH=/app)
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
 import time
 import logging
 import asyncio
@@ -24,13 +31,13 @@ from ibapi.common import *
 from ibapi.ticktype import *
 import uvicorn
 
-# Technical indicators support
+# Technical indicators support (from shared package)
 import pandas as pd
 import numpy as np
-from indicators import calculator as indicator_calculator
+from shared.indicators import calculator as indicator_calculator
 
-# Backtesting support
-from backtesting import backtest_engine, AVAILABLE_STRATEGIES
+# Backtesting support (from shared package)
+from shared.backtesting import backtest_engine, AVAILABLE_STRATEGIES
 
 # Configure logging
 logging.basicConfig(

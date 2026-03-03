@@ -21,7 +21,7 @@ interface OrderExecution {
   action: 'BUY' | 'SELL';
   quantity: number;
   price?: number;
-  ibOrderId?: number;
+  brokerOrderId?: number | string;
   status: 'pending' | 'submitted' | 'filled' | 'cancelled' | 'rejected' | 'partial';
   filledQuantity?: number;
   avgFillPrice?: number;
@@ -78,7 +78,7 @@ export const orderService = {
       // Store order in database
       const storedOrder = await this.storeOrderExecution({
         ...order,
-        ibOrderId: parseInt(brokerOrder.brokerOrderId, 10) || undefined,
+        brokerOrderId: parseInt(brokerOrder.brokerOrderId, 10) || brokerOrder.brokerOrderId,
         status: 'submitted'
       });
 
@@ -110,11 +110,11 @@ export const orderService = {
     const query = `
       INSERT INTO order_executions (
         setup_id, signal_id, contract_id, order_type, action, quantity, price,
-        ib_order_id, status, filled_quantity, avg_fill_price, error_message
+        broker_order_id, status, filled_quantity, avg_fill_price, error_message
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, setup_id, signal_id, contract_id, order_type, action, quantity, price,
-                ib_order_id, status, filled_quantity, avg_fill_price, error_message,
+                broker_order_id, status, filled_quantity, avg_fill_price, error_message,
                 created_at, updated_at
     `;
 
@@ -126,7 +126,7 @@ export const orderService = {
       order.action,
       order.quantity,
       order.price || null,
-      order.ibOrderId || null,
+      order.brokerOrderId ?? null,
       order.status,
       order.filledQuantity || null,
       order.avgFillPrice || null,
@@ -144,7 +144,7 @@ export const orderService = {
       action: row.action,
       quantity: parseFloat(row.quantity),
       price: row.price ? parseFloat(row.price) : undefined,
-      ibOrderId: row.ib_order_id,
+      brokerOrderId: row.broker_order_id,
       status: row.status,
       filledQuantity: row.filled_quantity ? parseFloat(row.filled_quantity) : undefined,
       avgFillPrice: row.avg_fill_price ? parseFloat(row.avg_fill_price) : undefined,
@@ -196,7 +196,7 @@ export const orderService = {
       SET ${updateFields.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING id, setup_id, signal_id, contract_id, order_type, action, quantity, price,
-                ib_order_id, status, filled_quantity, avg_fill_price, error_message,
+                broker_order_id, status, filled_quantity, avg_fill_price, error_message,
                 created_at, updated_at
     `;
 
@@ -217,7 +217,7 @@ export const orderService = {
       action: row.action,
       quantity: parseFloat(row.quantity),
       price: row.price ? parseFloat(row.price) : undefined,
-      ibOrderId: row.ib_order_id,
+      brokerOrderId: row.broker_order_id,
       status: row.status,
       filledQuantity: row.filled_quantity ? parseFloat(row.filled_quantity) : undefined,
       avgFillPrice: row.avg_fill_price ? parseFloat(row.avg_fill_price) : undefined,
@@ -231,7 +231,7 @@ export const orderService = {
   async getOrder(orderId: number): Promise<OrderExecution | null> {
     const query = `
       SELECT id, setup_id, signal_id, contract_id, order_type, action, quantity, price,
-             ib_order_id, status, filled_quantity, avg_fill_price, error_message,
+             broker_order_id, status, filled_quantity, avg_fill_price, error_message,
              created_at, updated_at
       FROM order_executions
       WHERE id = $1
@@ -254,7 +254,7 @@ export const orderService = {
       action: row.action,
       quantity: parseFloat(row.quantity),
       price: row.price ? parseFloat(row.price) : undefined,
-      ibOrderId: row.ib_order_id,
+      brokerOrderId: row.broker_order_id,
       status: row.status,
       filledQuantity: row.filled_quantity ? parseFloat(row.filled_quantity) : undefined,
       avgFillPrice: row.avg_fill_price ? parseFloat(row.avg_fill_price) : undefined,
@@ -272,7 +272,7 @@ export const orderService = {
   } = {}): Promise<OrderExecution[]> {
     let query = `
       SELECT id, setup_id, signal_id, contract_id, order_type, action, quantity, price,
-             ib_order_id, status, filled_quantity, avg_fill_price, error_message,
+             broker_order_id, status, filled_quantity, avg_fill_price, error_message,
              created_at, updated_at
       FROM order_executions
       WHERE 1=1
@@ -311,7 +311,7 @@ export const orderService = {
       action: row.action,
       quantity: parseFloat(row.quantity),
       price: row.price ? parseFloat(row.price) : undefined,
-      ibOrderId: row.ib_order_id,
+      brokerOrderId: row.broker_order_id,
       status: row.status,
       filledQuantity: row.filled_quantity ? parseFloat(row.filled_quantity) : undefined,
       avgFillPrice: row.avg_fill_price ? parseFloat(row.avg_fill_price) : undefined,
@@ -325,7 +325,7 @@ export const orderService = {
   async cancelOrder(orderId: number): Promise<boolean> {
     const order = await this.getOrder(orderId);
     
-    if (!order || !order.ibOrderId) {
+    if (!order || !order.brokerOrderId) {
       throw new Error('Order not found or has no broker order ID');
     }
 
@@ -338,8 +338,8 @@ export const orderService = {
       const broker = getBrokerService();
 
       // Cancel order via broker service abstraction
-      console.log(`[${broker.brokerType}] Cancelling order ${order.ibOrderId}`);
-      await broker.cancelOrder(String(order.ibOrderId));
+      console.log(`[${broker.brokerType}] Cancelling order ${order.brokerOrderId}`);
+      await broker.cancelOrder(String(order.brokerOrderId));
 
       // Update order status
       const updatedOrder = await this.updateOrderStatus(orderId, 'cancelled');

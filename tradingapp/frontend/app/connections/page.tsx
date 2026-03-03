@@ -5,6 +5,21 @@ import { getApiUrl } from '../utils/apiConfig';
 import BackToHome from '../components/BackToHome';
 
 // Types
+type BrokerTab = 'ib' | 'ctrader';
+
+interface CTraderConnectionProfile {
+  id?: number;
+  name: string;
+  description?: string;
+  account_mode: 'live' | 'paper';
+  client_id: string;
+  redirect_uri?: string;
+  is_active: boolean;
+  is_default: boolean;
+  last_connected_at?: string;
+  last_error?: string;
+}
+
 interface IBConnectionProfile {
   id?: number;
   name: string;
@@ -70,7 +85,9 @@ const DEFAULT_PORTS = {
 };
 
 export default function ConnectionsPage() {
+  const [activeTab, setActiveTab] = useState<BrokerTab>('ib');
   const [profiles, setProfiles] = useState<IBConnectionProfile[]>([]);
+  const [ctraderProfiles, setCtraderProfiles] = useState<CTraderConnectionProfile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +95,15 @@ export default function ConnectionsPage() {
   
   // Form state
   const [showForm, setShowForm] = useState(false);
+  const [showCtraderForm, setShowCtraderForm] = useState(false);
+  const [ctraderFormData, setCtraderFormData] = useState<Partial<CTraderConnectionProfile>>({
+    name: '',
+    account_mode: 'paper',
+    client_id: '',
+    redirect_uri: '',
+    is_active: false,
+    is_default: false
+  });
   const [editingProfile, setEditingProfile] = useState<IBConnectionProfile | null>(null);
   const [formData, setFormData] = useState<Partial<IBConnectionProfile>>({
     name: '',
@@ -120,6 +146,18 @@ export default function ConnectionsPage() {
     }
   }, [apiUrl]);
 
+  // Fetch cTrader profiles
+  const fetchCtraderProfiles = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/ctrader-connections/profiles`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Failed to fetch cTrader profiles');
+      setCtraderProfiles(data.profiles || []);
+    } catch (err: unknown) {
+      console.error('Error fetching cTrader profiles:', err);
+    }
+  }, [apiUrl]);
+
   // Fetch connection status
   const fetchConnectionStatus = useCallback(async () => {
     try {
@@ -137,8 +175,9 @@ export default function ConnectionsPage() {
     const loadData = async () => {
       setLoading(true);
       setError(null);
-      const [profilesResult, statusResult] = await Promise.allSettled([
+      const [profilesResult, ctraderResult, statusResult] = await Promise.allSettled([
         fetchProfiles(),
+        fetchCtraderProfiles(),
         fetchConnectionStatus()
       ]);
       if (profilesResult.status === 'rejected') {
@@ -151,7 +190,7 @@ export default function ConnectionsPage() {
     // Poll connection status every 30 seconds
     const interval = setInterval(fetchConnectionStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchProfiles, fetchConnectionStatus]);
+  }, [fetchProfiles, fetchCtraderProfiles, fetchConnectionStatus]);
 
   // Update port when connection type or account mode changes
   useEffect(() => {
@@ -389,8 +428,31 @@ export default function ConnectionsPage() {
             Connection Manager
           </h1>
           <p className="text-gray-400 mt-2">
-            Configure connections to IB Gateway or Trader Workstation (TWS) for live or paper trading
+            Configure connections to IB Gateway, cTrader, or Trader Workstation (TWS) for live or paper trading
           </p>
+          {/* Broker Tabs */}
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => setActiveTab('ib')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'ib'
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-slate-800 text-gray-400 hover:bg-slate-700 hover:text-gray-300'
+              }`}
+            >
+              IB Connections
+            </button>
+            <button
+              onClick={() => setActiveTab('ctrader')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'ctrader'
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-slate-800 text-gray-400 hover:bg-slate-700 hover:text-gray-300'
+              }`}
+            >
+              cTrader Connections
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -411,7 +473,7 @@ export default function ConnectionsPage() {
                 )}
                 {(error.includes('5432') || error.includes('ECONNREFUSED') || error.includes('connect ECONNREFUSED')) && (
                   <p className="mt-2 text-sm text-gray-400">
-                    Database connection error: the backend cannot reach PostgreSQL. Set <code className="bg-slate-800 px-1 rounded">POSTGRES_HOST</code> in <code className="bg-slate-800 px-1 rounded">.env</code> to your database server (e.g. <code className="bg-slate-800 px-1 rounded">10.7.3.21</code>), then restart the backend. See DEPLOYMENT.md → Common Issues.
+                    Database connection error: the backend cannot reach PostgreSQL. Set <code className="bg-slate-800 px-1 rounded">POSTGRES_HOST</code> in <code className="bg-slate-800 px-1 rounded">.env</code> to your database server (e.g. <code className="bg-slate-800 px-1 rounded">10.7.3.21</code>), then restart the backend. See 1-OPERATIONS.md → Troubleshooting.
                   </p>
                 )}
               </div>
@@ -444,6 +506,9 @@ export default function ConnectionsPage() {
           </div>
         )}
 
+        {/* IB Tab Content */}
+        {activeTab === 'ib' && (
+        <>
         {/* Connection Status Card */}
         <div className="mb-8 p-6 bg-slate-800/50 border border-slate-700 rounded-xl">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -835,6 +900,96 @@ export default function ConnectionsPage() {
             </div>
           </div>
         </div>
+        </>
+        )}
+
+        {/* cTrader Tab Content */}
+        {activeTab === 'ctrader' && (
+        <>
+        <div className="mb-8 p-6 bg-slate-800/50 border border-slate-700 rounded-xl">
+          <h2 className="text-xl font-semibold mb-4">cTrader Connections</h2>
+          <p className="text-gray-400 mb-4">
+            Register your app at <a href="https://openapi.ctrader.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">openapi.ctrader.com</a> to get Client ID and Client Secret. Complete the OAuth flow to connect.
+          </p>
+          {!showCtraderForm && (
+            <button
+              onClick={() => { setShowCtraderForm(true); setCtraderFormData({ name: '', account_mode: 'paper', client_id: '', redirect_uri: '', is_active: false, is_default: false }); }}
+              className="mb-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-lg font-semibold transition-all duration-200"
+            >
+              + Add cTrader Profile
+            </button>
+          )}
+          {showCtraderForm && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const res = await fetch(`${apiUrl}/api/ctrader-connections/profiles`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ctraderFormData)
+                  });
+                  if (!res.ok) {
+                    const d = await res.json();
+                    throw new Error(d.error || d.message || 'Failed to create');
+                  }
+                  showSuccess('Profile created');
+                  setShowCtraderForm(false);
+                  fetchCtraderProfiles();
+                } catch (err: unknown) {
+                  setError(getErrorMessage(err));
+                }
+              }}
+              className="space-y-4 mb-6"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Profile Name *</label>
+                <input type="text" required value={ctraderFormData.name} onChange={(e) => setCtraderFormData({ ...ctraderFormData, name: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg" placeholder="e.g., cTrader Demo" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Client ID *</label>
+                <input type="text" required value={ctraderFormData.client_id} onChange={(e) => setCtraderFormData({ ...ctraderFormData, client_id: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg font-mono" placeholder="From openapi.ctrader.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Redirect URI</label>
+                <input type="text" value={ctraderFormData.redirect_uri || ''} onChange={(e) => setCtraderFormData({ ...ctraderFormData, redirect_uri: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg" placeholder="http://localhost:3000/connections/ctrader/callback" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Account Mode</label>
+                <select value={ctraderFormData.account_mode || 'paper'} onChange={(e) => setCtraderFormData({ ...ctraderFormData, account_mode: e.target.value as 'live' | 'paper' })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg">
+                  <option value="paper">Paper / Demo</option>
+                  <option value="live">Live</option>
+                </select>
+              </div>
+              <div className="flex gap-4">
+                <button type="submit" className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg font-semibold">Create Profile</button>
+                <button type="button" onClick={() => setShowCtraderForm(false)} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold">Cancel</button>
+              </div>
+            </form>
+          )}
+          {ctraderProfiles.length === 0 ? (
+            <p className="text-gray-400">No cTrader profiles yet. Add one to get started.</p>
+          ) : (
+            <div className="space-y-4">
+              {ctraderProfiles.map((p) => (
+                <div key={p.id} className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg flex justify-between items-center">
+                  <div>
+                    <span className="font-semibold">{p.name}</span>
+                    <span className={`ml-2 px-2 py-0.5 text-xs rounded ${p.account_mode === 'live' ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>{p.account_mode}</span>
+                    {p.is_default && <span className="ml-2 text-xs text-purple-400">Default</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={async () => { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}/activate`, { method: 'POST' }); showSuccess('Activated'); fetchCtraderProfiles(); }} className="px-3 py-1 bg-green-600/20 border border-green-600 text-green-300 rounded text-sm">Activate</button>
+                    <button onClick={async () => { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}/set-default`, { method: 'POST' }); showSuccess('Set default'); fetchCtraderProfiles(); }} className="px-3 py-1 bg-slate-700 rounded text-sm">Set Default</button>
+                    <button onClick={async () => { if (confirm('Delete?')) { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}`, { method: 'DELETE' }); showSuccess('Deleted'); fetchCtraderProfiles(); } }} className="px-3 py-1 bg-red-900/30 border border-red-800 text-red-400 rounded text-sm">Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        </>
+        )}
       </div>
     </div>
   );

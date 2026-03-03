@@ -18,14 +18,14 @@ case "$1" in
     echo "Syncing and deploying to $REMOTE_HOST..."
     rsync -avz --exclude 'node_modules' --exclude '.next' --exclude '__pycache__' \
       "$LOCAL_PATH/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH/"
-    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH/tradingapp && docker-compose up -d --build"
+    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH && docker-compose up -d --build"
     ;;
   restart)
     echo "Restarting services on $REMOTE_HOST..."
-    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH/tradingapp && docker-compose restart"
+    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH && docker-compose restart"
     ;;
   logs)
-    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH/tradingapp && docker-compose logs --tail=50"
+    ssh "$REMOTE_USER@$REMOTE_HOST" "cd $REMOTE_PATH && docker-compose logs --tail=50"
     ;;
   *)
     echo "Usage: $0 [sync|deploy|restart|logs]"

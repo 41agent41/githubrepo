@@ -36,6 +36,9 @@ export {
 // Re-export IB implementation
 export { IBBrokerService, ibBrokerService } from './IBBroker.js';
 
+// Re-export cTrader implementation
+export { CTraderBrokerService } from './CTraderBroker.js';
+
 // Re-export factory
 export {
   brokerFactory,

@@ -8,8 +8,14 @@
 
 import { IBrokerService } from './IBrokerService.js';
 import { IBBrokerService } from './IBBroker.js';
+import { CTraderBrokerService } from './CTraderBroker.js';
 import { BrokerType, BrokerError } from '../../types/broker.js';
-import { getIBServiceUrl } from '../../config/runtimeConfig.js';
+import { getBrokerServiceUrl } from '../../config/runtimeConfig.js';
+import {
+  brokerConnectionResolver,
+  type ActiveConnectionResult,
+  type ResolvedConnectionStatus
+} from '../brokerConnectionResolver.js';
 
 /**
  * Broker configuration options
@@ -20,28 +26,17 @@ interface BrokerConfig {
 
 /**
  * Broker Factory
- * 
+ *
  * Creates and manages broker service instances. Supports singleton pattern
  * for reusing broker connections, or creating new instances as needed.
+ * Service URLs are resolved via getBrokerServiceUrl(brokerType) from runtimeConfig.
  */
 class BrokerFactory {
   private instances: Map<BrokerType, IBrokerService> = new Map();
   private configs: Map<BrokerType, BrokerConfig> = new Map();
 
   constructor() {
-    // Initialize with default configurations (from System Settings or env)
-    this.configs.set('IB', {
-      serviceUrl: getIBServiceUrl()
-    });
-    
-    // MT5 and cTrader configs will be added when those brokers are implemented
-    this.configs.set('MT5', {
-      serviceUrl: process.env.MT5_SERVICE_URL || 'http://mt5_service:8001'
-    });
-    
-    this.configs.set('CTRADER', {
-      serviceUrl: process.env.CTRADER_SERVICE_URL || 'http://ctrader_service:8002'
-    });
+    // Configs are populated on-demand; service URLs resolved via getBrokerServiceUrl(brokerType)
   }
 
   /**
@@ -70,16 +65,17 @@ class BrokerFactory {
 
   /**
    * Create a new broker service instance
-   * 
+   *
    * @param brokerType The type of broker to create
    * @returns The new broker service instance
    */
   private createBroker(brokerType: BrokerType): IBrokerService {
     const config = this.configs.get(brokerType);
+    const serviceUrl = config?.serviceUrl ?? getBrokerServiceUrl(brokerType);
 
     switch (brokerType) {
       case 'IB':
-        return new IBBrokerService(config?.serviceUrl);
+        return new IBBrokerService(serviceUrl);
 
       case 'MT5':
         // MT5 implementation will be added later
@@ -90,12 +86,7 @@ class BrokerFactory {
         );
 
       case 'CTRADER':
-        // cTrader implementation will be added later
-        throw new BrokerError(
-          'cTrader broker is not yet implemented',
-          'CTRADER',
-          'NOT_IMPLEMENTED'
-        );
+        return new CTraderBrokerService(serviceUrl);
 
       default:
         throw new BrokerError(
@@ -140,8 +131,9 @@ class BrokerFactory {
       case 'IB':
         return true;
       case 'MT5':
+        return false;
       case 'CTRADER':
-        return false; // Not yet implemented
+        return true;
       default:
         return false;
     }
@@ -153,7 +145,7 @@ class BrokerFactory {
    * @returns Array of supported broker types
    */
   getSupportedBrokers(): BrokerType[] {
-    return ['IB']; // Will grow as more brokers are implemented
+    return ['IB', 'CTRADER'];
   }
 
   /**
@@ -189,8 +181,29 @@ class BrokerFactory {
   }
 
   /**
+   * Get active connection for a broker type (delegates to BrokerConnectionResolver)
+   */
+  async getActiveConnection(brokerType: BrokerType): Promise<ActiveConnectionResult | null> {
+    return brokerConnectionResolver.getActiveConnection(brokerType);
+  }
+
+  /**
+   * Get connection status for a broker type (delegates to BrokerConnectionResolver)
+   */
+  async getConnectionStatus(brokerType: BrokerType): Promise<ResolvedConnectionStatus | null> {
+    return brokerConnectionResolver.getConnectionStatus(brokerType);
+  }
+
+  /**
+   * Check if connection service exists for broker type
+   */
+  hasConnectionService(brokerType: BrokerType): boolean {
+    return brokerConnectionResolver.hasConnectionService(brokerType);
+  }
+
+  /**
    * Health check for all configured brokers
-   * 
+   *
    * @returns Health status for each broker
    */
   async healthCheckAll(): Promise<Record<BrokerType, { healthy: boolean; details?: any }>> {

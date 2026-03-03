@@ -1,117 +1,102 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import axios from 'axios';
 
 const router = express.Router();
-import { getIBServiceUrl } from '../config/runtimeConfig.js';
+import { brokerFactory } from '../services/brokers/index.js';
+import type { BrokerAccountSummary, BrokerPosition, BrokerOrder, BrokerConnectionStatusResponse } from '../types/broker.js';
+import { getBrokerFromRequest } from '../middleware/brokerSelection.js'; // fallback when middleware not used
+import { isDataQueryEnabled, handleDisabledDataQuery, getBrokerErrorResponse } from '../utils/routeUtils.js';
 
-// Interface for account data - basic required fields only for optimal performance
-interface AccountSummary {
-  account_id: string;
-  net_liquidation?: number;  // Basic required field
-  currency: string;          // Basic required field  
-  last_updated: string;
-  
-  // Optional fields (not requested in basic mode)
-  total_cash_value?: number;
-  buying_power?: number;
-  maintenance_margin?: number;
+// Map BrokerAccountSummary to API response format (snake_case for compatibility)
+function toAccountSummaryResponse(summary: BrokerAccountSummary) {
+  return {
+    account_id: summary.accountId,
+    accountId: summary.accountId,
+    net_liquidation: summary.netLiquidation,
+    NetLiquidation: summary.netLiquidation,
+    currency: summary.currency,
+    total_cash_value: summary.totalCashValue,
+    TotalCashValue: summary.totalCashValue,
+    buying_power: summary.buyingPower,
+    BuyingPower: summary.buyingPower,
+    maintenance_margin: summary.maintenanceMargin,
+    MaintMarginReq: summary.maintenanceMargin,
+    last_updated: summary.lastUpdated.toISOString()
+  };
 }
 
-interface Position {
-  symbol: string;
-  position: number;
-  market_price?: number;
-  market_value?: number;
-  average_cost?: number;
-  unrealized_pnl?: number;
-  currency: string;
+// Map BrokerPosition to API response format
+function toPositionResponse(pos: BrokerPosition) {
+  return {
+    symbol: pos.symbol,
+    position: pos.position,
+    market_price: pos.marketPrice,
+    market_value: pos.marketValue,
+    average_cost: pos.averageCost,
+    unrealized_pnl: pos.unrealizedPnL,
+    realized_pnl: pos.realizedPnL,
+    currency: pos.currency,
+    sec_type: pos.securityType,
+    exchange: pos.exchange
+  };
 }
 
-interface Order {
-  order_id: number;
-  symbol: string;
-  action: string;
-  quantity: number;
-  order_type: string;
-  status: string;
-  filled_quantity?: number;
-  remaining_quantity?: number;
-  avg_fill_price?: number;
+// Map BrokerOrder to API response format
+function toOrderResponse(order: BrokerOrder) {
+  return {
+    order_id: parseInt(order.brokerOrderId, 10) || order.brokerOrderId,
+    orderId: order.brokerOrderId,
+    symbol: order.symbol,
+    action: order.action,
+    quantity: order.quantity,
+    order_type: order.orderType,
+    status: order.status,
+    filled_quantity: order.filledQuantity,
+    remaining_quantity: order.remainingQuantity,
+    avg_fill_price: order.averageFillPrice
+  };
 }
 
-interface AccountData {
-  account: AccountSummary;
-  positions: Position[];
-  orders: Order[];
-  last_updated: string;
-}
-
-// Helper function to check if data query is enabled via headers
-function isDataQueryEnabled(req: Request): boolean {
-  const enabled = req.headers['x-data-query-enabled'];
-  if (typeof enabled === 'string') {
-    return enabled.toLowerCase() === 'true';
-  }
-  if (Array.isArray(enabled)) {
-    return enabled[0]?.toLowerCase() === 'true';
-  }
-  return false;
-}
-
-// Helper function to handle disabled data query response
-function handleDisabledDataQuery(res: Response, message: string) {
-  return res.status(200).json({
-    disabled: true,
-    message: message,
-    timestamp: new Date().toISOString()
-  });
+// Map BrokerConnectionStatusResponse to API format (backwards compatible with ib_service /connection)
+function toConnectionResponse(status: BrokerConnectionStatusResponse) {
+  return {
+    connected: status.connected,
+    connection: {
+      ib_gateway: {
+        connected: status.connected,
+        host: status.details?.host,
+        port: status.details?.port,
+        client_id: status.details?.clientId,
+        account_mode: status.accountMode,
+        last_error: status.lastError
+      }
+    }
+  };
 }
 
 // Get account summary
 router.get('/summary', async (req: Request, res: Response) => {
   try {
-    // Check if data querying is enabled
     if (!isDataQueryEnabled(req)) {
       return handleDisabledDataQuery(res, 'Account summary data querying is disabled');
     }
 
-    console.log('Fetching account summary from IB service');
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/account/summary`, {
-      timeout: 20000, // 20 second timeout for account data
-      headers: {
-        'Connection': 'close'
-      }
-    });
+    console.log(`[${brokerType}] Fetching account summary`);
 
-    console.log('Successfully fetched account summary');
-    res.json(response.data);
+    const summary = await broker.getAccountSummary();
+    const response = toAccountSummaryResponse(summary);
 
+    console.log(`[${brokerType}] Successfully fetched account summary`);
+    res.json(response);
   } catch (error: any) {
     console.error('Error fetching account summary:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'IB Service timeout - service may be busy';
-      statusCode = 504;
-    } else if (error.response) {
-      errorMessage = error.response.data?.detail || error.response.statusText || 'IB Service error';
-      statusCode = error.response.status;
-    } else {
-      errorMessage = error.message || 'Failed to connect to IB Service';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch account summary');
     res.status(statusCode).json({
       error: 'Failed to fetch account summary',
       detail: errorMessage,
-      ib_service_status: statusCode,
-      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -120,51 +105,30 @@ router.get('/summary', async (req: Request, res: Response) => {
 // Get account positions
 router.get('/positions', async (req: Request, res: Response) => {
   try {
-    // Check if data querying is enabled
     if (!isDataQueryEnabled(req)) {
       return handleDisabledDataQuery(res, 'Account positions data querying is disabled');
     }
 
-    console.log('Fetching account positions from IB service');
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/account/positions`, {
-      timeout: 20000, // 20 second timeout
-      headers: {
-        'Connection': 'close'
-      }
-    });
+    console.log(`[${brokerType}] Fetching account positions`);
 
-    console.log(`Successfully fetched ${response.data.length} positions`);
+    const positions = await broker.getPositions();
+    const mappedPositions = positions.map(toPositionResponse);
+
+    console.log(`[${brokerType}] Successfully fetched ${positions.length} positions`);
     res.json({
-      positions: response.data,
-      count: response.data.length,
+      positions: mappedPositions,
+      count: mappedPositions.length,
       last_updated: new Date().toISOString()
     });
-
   } catch (error: any) {
     console.error('Error fetching account positions:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'IB Service timeout - service may be busy';
-      statusCode = 504;
-    } else if (error.response) {
-      errorMessage = error.response.data?.detail || error.response.statusText || 'IB Service error';
-      statusCode = error.response.status;
-    } else {
-      errorMessage = error.message || 'Failed to connect to IB Service';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch account positions');
     res.status(statusCode).json({
       error: 'Failed to fetch account positions',
       detail: errorMessage,
-      ib_service_status: statusCode,
-      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -173,51 +137,30 @@ router.get('/positions', async (req: Request, res: Response) => {
 // Get account orders
 router.get('/orders', async (req: Request, res: Response) => {
   try {
-    // Check if data querying is enabled
     if (!isDataQueryEnabled(req)) {
       return handleDisabledDataQuery(res, 'Account orders data querying is disabled');
     }
 
-    console.log('Fetching account orders from IB service');
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/account/orders`, {
-      timeout: 20000, // 20 second timeout
-      headers: {
-        'Connection': 'close'
-      }
-    });
+    console.log(`[${brokerType}] Fetching account orders`);
 
-    console.log(`Successfully fetched ${response.data.length} orders`);
+    const orders = await broker.getOrders();
+    const mappedOrders = orders.map(toOrderResponse);
+
+    console.log(`[${brokerType}] Successfully fetched ${orders.length} orders`);
     res.json({
-      orders: response.data,
-      count: response.data.length,
+      orders: mappedOrders,
+      count: mappedOrders.length,
       last_updated: new Date().toISOString()
     });
-
   } catch (error: any) {
     console.error('Error fetching account orders:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'IB Service timeout - service may be busy';
-      statusCode = 504;
-    } else if (error.response) {
-      errorMessage = error.response.data?.detail || error.response.statusText || 'IB Service error';
-      statusCode = error.response.status;
-    } else {
-      errorMessage = error.message || 'Failed to connect to IB Service';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch account orders');
     res.status(statusCode).json({
       error: 'Failed to fetch account orders',
       detail: errorMessage,
-      ib_service_status: statusCode,
-      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
@@ -226,95 +169,58 @@ router.get('/orders', async (req: Request, res: Response) => {
 // Get all account data in one call
 router.get('/all', async (req: Request, res: Response) => {
   try {
-    // Check if data querying is enabled
     if (!isDataQueryEnabled(req)) {
       return handleDisabledDataQuery(res, 'All account data querying is disabled');
     }
 
-    console.log('Fetching all account data from IB service');
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/account/all`, {
-      timeout: 30000, // 30 second timeout for comprehensive data
-      headers: {
-        'Connection': 'close'
-      }
+    console.log(`[${brokerType}] Fetching all account data`);
+
+    const { account, positions, orders } = await broker.getAccountData();
+
+    console.log(`[${brokerType}] Successfully fetched all account data`);
+    res.json({
+      account: toAccountSummaryResponse(account),
+      positions: positions.map(toPositionResponse),
+      orders: orders.map(toOrderResponse),
+      last_updated: new Date().toISOString()
     });
-
-    console.log('Successfully fetched all account data');
-    res.json(response.data);
-
   } catch (error: any) {
     console.error('Error fetching all account data:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'IB Service timeout - service may be busy';
-      statusCode = 504;
-    } else if (error.response) {
-      errorMessage = error.response.data?.detail || error.response.statusText || 'IB Service error';
-      statusCode = error.response.status;
-    } else {
-      errorMessage = error.message || 'Failed to connect to IB Service';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch all account data');
     res.status(statusCode).json({
       error: 'Failed to fetch all account data',
       detail: errorMessage,
-      ib_service_status: statusCode,
-      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// Get IB connection status (moved from other routes for account independence)
+// Get broker connection status
 router.get('/connection', async (req: Request, res: Response) => {
   try {
-    console.log('Checking IB Gateway connection status');
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/connection`, {
-      timeout: 10000, // 10 second timeout for connection check
-      headers: {
-        'Connection': 'close'
-      }
-    });
+    console.log(`[${brokerType}] Checking connection status`);
 
-    console.log('Successfully retrieved connection status');
-    res.json(response.data);
+    const status = await broker.getConnectionStatus();
+    const response = toConnectionResponse(status);
 
+    console.log(`[${brokerType}] Successfully retrieved connection status`);
+    res.json(response);
   } catch (error: any) {
-    console.error('Error checking IB connection:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'IB Service timeout - service may be busy';
-      statusCode = 504;
-    } else if (error.response) {
-      errorMessage = error.response.data?.detail || error.response.statusText || 'IB Service error';
-      statusCode = error.response.status;
-    } else {
-      errorMessage = error.message || 'Failed to connect to IB Service';
-    }
-    
+    console.error('Error checking connection status:', error);
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to check connection status');
     res.status(statusCode).json({
-      error: 'Failed to check IB connection',
+      error: 'Failed to check connection status',
       detail: errorMessage,
       connected: false,
-      ib_service_status: statusCode,
-      ib_service_url: getIBServiceUrl(),
       timestamp: new Date().toISOString()
     });
   }
 });
 
-export default router; 
+export default router;

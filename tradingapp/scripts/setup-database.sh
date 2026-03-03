@@ -15,7 +15,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-tradingapp}"
-DB_USER="${DB_USER:-postgres}"
+DB_USER="${DB_USER:-tradingapp}"
 
 echo "📊 Database connection parameters:"
 echo "   Host: $DB_HOST"

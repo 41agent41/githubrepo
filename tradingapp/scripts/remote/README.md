@@ -1,68 +1,56 @@
-# Remote Server Access
+# Remote Scripts — Backup for Cursor Remote-SSH
 
-Simple scripts to connect to and manage the TradingApp infrastructure.
+Use these scripts when Cursor Remote-SSH is unavailable (connection issues, machine without Cursor, batch operations).
+
+**Primary method:** [2-REMOTE_ACCESS.md](../../2-REMOTE_ACCESS.md)
 
 ## Servers
 
 | Server | IP | Description |
 |--------|-----|-------------|
-| VM 100 | 10.7.3.20 | TradingApp (Docker) |
-| LXC 120 | 10.7.3.21 | TimescaleDB (PostgreSQL) |
-| VM 101 | 10.7.3.22 | IBKR Gateway |
+| tradingapp | 10.7.3.20 | VM 100 — TradingApp (Docker) |
+| timescaledb | 10.7.3.21 | LXC 120 — PostgreSQL/TimescaleDB |
+| ibkr-gateway | 10.7.3.22 | VM 101 — IBKR Gateway |
 
-## Quick Commands
+## connect.sh
+
+SSH to servers:
 
 ```bash
-# Check all server connectivity
-./connect.sh status
-
-# SSH to TradingApp server
-./connect.sh tradingapp
-
-# SSH to database server
-./connect.sh timescaledb
-
-# SSH to IBKR gateway
-./connect.sh ibkr-gateway
+./connect.sh tradingapp    # SSH to VM 100
+./connect.sh timescaledb   # SSH to LXC 120
+./connect.sh ibkr-gateway  # SSH to VM 101
+./connect.sh status        # Check all server connectivity
 ```
 
-## Deploying Changes
+## sync.sh
+
+Push code and manage deployment:
 
 ```bash
-# Sync files only (no rebuild)
-./sync.sh sync
-
-# Sync and rebuild containers
-./sync.sh deploy
-
-# Restart containers
-./sync.sh restart
-
-# View logs
-./sync.sh logs
+./sync.sh sync     # Copy files only
+./sync.sh deploy   # Copy and rebuild containers
+./sync.sh restart  # Restart containers
+./sync.sh logs     # View container logs
 ```
 
-## Running SQL Migrations
+## run-sql.sh
+
+Run SQL files on remote TimescaleDB. Run from `scripts/remote/`:
 
 ```bash
-# Set password
 export POSTGRES_PASSWORD=your_password
-
-# Run a migration
-./run-sql.sh ../backend/src/database/migration-keepalive.sql
+./run-sql.sh ../../backend/src/database/migration-keepalive.sql
 ```
 
 ## SSH Setup (if needed)
 
-Generate and copy SSH key to servers:
-
 ```bash
-# Generate key (if you don't have one)
 ssh-keygen -t ed25519
-
-# Copy to TradingApp server
 ssh-copy-id tradingapp@10.7.3.20
-
-# Copy to database server
 ssh-copy-id root@10.7.3.21
 ```
+
+## Configuration
+
+Server IPs are in the scripts. Edit `sync.sh`, `connect.sh`, and `run-sql.sh` directly if your infrastructure IPs differ.

@@ -46,6 +46,8 @@ show_usage() {
 echo "  test        - Test all connections"
 echo "  diagnose    - Run comprehensive diagnostics"
 echo "  fix         - Auto-fix common issues"
+echo "  fix-api-url - Fix API URL, pull code, rebuild frontend"
+echo "  verify-timestamps - Verify IB API timestamp format"
 echo "  ib-help     - IB Gateway setup instructions"
 echo "  clean       - Clean up and reset"
     echo ""
@@ -406,6 +408,118 @@ fix_issues() {
     print_status "Auto-fix completed!"
 }
 
+fix_api_url() {
+    print_info "Fixing API URL configuration and rebuilding frontend..."
+    
+    if [[ ! -f .env ]]; then
+        print_error ".env file not found. Run '$0 config' or '$0 setup' first."
+        exit 1
+    fi
+    
+    echo ""
+    echo "Current NEXT_PUBLIC_API_URL:"
+    grep "NEXT_PUBLIC_API_URL" .env 2>/dev/null || echo "  (not set)"
+    echo ""
+    
+    print_info "Pulling latest code..."
+    git pull
+    
+    print_info "Stopping services..."
+    docker-compose down --remove-orphans 2>/dev/null || true
+    
+    print_info "Rebuilding frontend with --no-cache (applies API URL from .env)..."
+    docker-compose build --no-cache frontend
+    
+    print_info "Starting all services..."
+    docker-compose up -d
+    
+    print_info "Waiting for services to start..."
+    sleep 10
+    
+    docker-compose ps
+    print_status "Frontend rebuilt. Verify: NEXT_PUBLIC_API_URL in .env, then visit /configure to test."
+}
+
+verify_timestamps() {
+    print_info "Verifying IB API timestamp configuration..."
+    
+    [[ -f .env ]] && source .env
+    local api_base="${NEXT_PUBLIC_API_URL:-http://localhost:4000}"
+    local ib_service_base="${IB_SERVICE_URL:-http://localhost:8000}"
+    
+    echo ""
+    echo "=== Trading App Timestamp Verification (Remote IB Gateway) ==="
+    echo ""
+    echo "📍 Architecture: IB Gateway (Remote) → Trading App (This Server)"
+    echo ""
+    
+    # Inner function to test timestamp format
+    _test_timestamp_format() {
+        local endpoint="$1"
+        local description="$2"
+        echo "🔍 Testing: $description"
+        echo "📡 Endpoint: $endpoint"
+        local response
+        response=$(curl -s "$endpoint" 2>/dev/null)
+        if [[ $? -eq 0 && -n "$response" ]]; then
+            if echo "$response" | grep -q '"bars"'; then
+                echo "✅ API Response received"
+                local timestamp
+                timestamp=$(echo "$response" | grep -o '"timestamp":[0-9]*' | head -1 | cut -d':' -f2)
+                if [[ -n "$timestamp" ]]; then
+                    echo "📊 Raw timestamp: $timestamp"
+                    echo "📅 Timestamp interpretations:"
+                    if command -v date >/dev/null 2>&1; then
+                        echo "   As seconds: $(date -d "@$timestamp" 2>/dev/null || date -r "$timestamp" 2>/dev/null)"
+                        echo "   As milliseconds: $(date -d "@$((timestamp/1000))" 2>/dev/null || date -r "$((timestamp/1000))" 2>/dev/null)"
+                    fi
+                    if [[ "$timestamp" -gt 1577836800 && "$timestamp" -lt 1893456000 ]]; then
+                        echo "✅ Timestamp appears to be Unix seconds format (reasonable range)"
+                    elif [[ "$timestamp" -gt 1577836800000 && "$timestamp" -lt 1893456000000 ]]; then
+                        echo "⚠️ Timestamp appears to be in Unix milliseconds format"
+                    else
+                        echo "❌ Timestamp out of reasonable range (2020-2030)"
+                    fi
+                else
+                    echo "❌ No timestamp found in response"
+                fi
+            else
+                echo "❌ No bars data in response"
+                echo "Response preview: $(echo "$response" | head -c 200)..."
+            fi
+        else
+            echo "❌ Failed to get API response"
+        fi
+        echo ""
+    }
+    
+    echo "🔧 Trading App Configuration:"
+    echo "   TZ: ${TZ:-'Not set (should be UTC)'}"
+    echo "   IB_HOST: ${IB_HOST:-'Not set'}"
+    echo "   IB_FORMAT_DATE: ${IB_FORMAT_DATE:-'Not set (should be 2 for Unix timestamps)'}"
+    echo ""
+    echo "🌍 Server Timezone: $(date +%Z) | UTC: $(date -u)"
+    echo ""
+    
+    _test_timestamp_format "$api_base/api/market-data/history?symbol=MSFT&timeframe=1hour&period=1D" "Main Trading App API (Full Chain)"
+    _test_timestamp_format "$ib_service_base/market-data/history?symbol=MSFT&timeframe=1hour&period=1D" "IB Service Direct API"
+    
+    echo "🔧 Configuration Endpoint: $ib_service_base/timezone-info"
+    local config_response
+    config_response=$(curl -s "$ib_service_base/timezone-info" 2>/dev/null)
+    if [[ -n "$config_response" ]]; then
+        echo "✅ Configuration endpoint accessible"
+        echo "$config_response" | grep -E '"(timezone_properly_set|ib_format_configured|timestamp_format_correct)"' 2>/dev/null || echo "   Check full response for details"
+    else
+        echo "❌ Configuration endpoint not accessible"
+    fi
+    echo ""
+    
+    echo "📝 Reference: Unix seconds=$(date +%s) | $(date -u)"
+    echo ""
+    echo "💡 Expected: Timestamps in Unix seconds (10 digits). If wrong: verify IB_FORMAT_DATE=2 in .env, TZ=UTC, then $0 restart"
+}
+
 show_logs() {
     print_info "Showing service logs..."
     
@@ -554,6 +668,12 @@ case "${1:-}" in
         ;;
     "fix")
         fix_issues
+        ;;
+    "fix-api-url")
+        fix_api_url
+        ;;
+    "verify-timestamps")
+        verify_timestamps
         ;;
     "ib-help")
         show_ib_help

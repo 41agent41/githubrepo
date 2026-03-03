@@ -8,9 +8,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory and copy requirements
+# Create app directory and copy requirements (context is tradingapp root)
 WORKDIR /app
-COPY requirements.txt ./
+COPY ib_service/requirements.txt ./
 
 # Install Python dependencies with verbose output for debugging
 RUN pip install --upgrade pip setuptools wheel && \
@@ -43,8 +43,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 ENV PATH=/usr/local/bin:$PATH
 ENV PYTHONPATH=/app:/usr/local/lib/python3.11/site-packages
 
-# Copy application code as root (needed for proper permissions)
-COPY . .
+# Copy shared package and ib_service code (context is tradingapp root)
+COPY shared ./shared
+COPY ib_service/ ./
 
 # Fix ownership after copying all files
 RUN chown -R ibservice:ibservice /app
@@ -77,5 +78,5 @@ ENV DATA_TIMEZONE=UTC
 # ENV IB_HOST, IB_PORT, IB_CLIENT_ID set by docker-compose
 ENV IB_LOG_LEVEL=INFO
 
-# Run the improved application
+# Run the improved application (PYTHONPATH=/app allows import of shared package)
 CMD ["python", "main.py"] 

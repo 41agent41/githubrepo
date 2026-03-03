@@ -2,9 +2,12 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import axios from 'axios';
 import { marketDataService, type Contract, type CandlestickBar, type TechnicalIndicator } from '../services/marketDataService.js';
+import { brokerFactory } from '../services/brokers/index.js';
+import type { SecurityType } from '../types/broker.js';
+import { getBrokerFromRequest } from '../middleware/brokerSelection.js';
+import { isDataQueryEnabled, handleDisabledDataQuery, getBrokerErrorResponse } from '../utils/routeUtils.js';
 
 const router = express.Router();
-import { getIBServiceUrl } from '../config/runtimeConfig.js';
 
 // Interface for market data request parameters
 interface MarketDataQuery {
@@ -38,33 +41,10 @@ interface AdvancedSearchQuery {
   account_mode?: string;
 }
 
-
-
-// Helper function to check if data query is enabled via headers
-function isDataQueryEnabled(req: Request): boolean {
-  const enabled = req.headers['x-data-query-enabled'];
-  if (typeof enabled === 'string') {
-    return enabled.toLowerCase() === 'true';
-  }
-  if (Array.isArray(enabled)) {
-    return enabled[0]?.toLowerCase() === 'true';
-  }
-  return false;
-}
-
-// Helper function to handle disabled data query response
-function handleDisabledDataQuery(res: Response, message: string) {
-  return res.status(200).json({
-    disabled: true,
-    message: message,
-    timestamp: new Date().toISOString()
-  });
-}
-
 // Contract search endpoint
 router.post('/search', async (req: Request, res: Response) => {
   try {
-    const { symbol, secType, exchange, currency, searchByName, account_mode } = req.body as SearchQuery;
+    const { symbol, secType, exchange, currency, searchByName } = req.body as SearchQuery;
 
     // Validate required parameters
     if (!symbol || !secType) {
@@ -98,70 +78,63 @@ router.post('/search', async (req: Request, res: Response) => {
       return handleDisabledDataQuery(res, 'Market data search is disabled');
     }
 
-    console.log(`Searching for contract: ${symbol} (${secType}) on ${exchange || 'any exchange'}`);
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.post(`${getIBServiceUrl()}/contract/search`, {
-      symbol: symbol,
-      secType: secType,
-      exchange: exchange,
-      currency: currency,
-      name: searchByName,  // IB service expects 'name' parameter, not 'searchByName'
-      account_mode: account_mode
-    }, {
-      timeout: 30000, // 30 second timeout for search
-      headers: {
-        'Connection': 'close'
-      }
+    console.log(`[${brokerType}] Searching for contract: ${symbol} (${secType}) on ${exchange || 'any exchange'}`);
+
+    const contracts = await broker.searchContracts({
+      symbol,
+      securityType: secType as SecurityType,
+      exchange,
+      currency,
+      searchByName
     });
 
-    console.log(`Found ${response.data?.results?.length || 0} contracts for ${symbol}`);
+    // Map to API response format
+    const results = contracts.map(c => ({
+      symbol: c.symbol,
+      secType: c.securityType,
+      exchange: c.exchange,
+      currency: c.currency,
+      multiplier: c.multiplier,
+      expiry: c.expiry,
+      strike: c.strike,
+      right: c.right,
+      localSymbol: c.localSymbol,
+      contractId: c.contractId,
+      conId: c.contractId,
+      longName: c.description,
+      description: c.description
+    }));
+
+    console.log(`[${brokerType}] Found ${results.length} contracts for ${symbol}`);
 
     // Store contracts in database for future reference
-    if (response.data?.results && Array.isArray(response.data.results)) {
-      for (const contract of response.data.results) {
-        try {
-          const contractData: Contract = {
-            symbol: contract.symbol,
-            secType: contract.secType,
-            exchange: contract.exchange,
-            currency: contract.currency,
-            multiplier: contract.multiplier,
-            expiry: contract.expiry,
-            strike: contract.strike,
-            right: contract.right,
-            localSymbol: contract.localSymbol,
-            contractId: contract.contractId
-          };
-          
-          await marketDataService.getOrCreateContract(contractData);
-        } catch (error) {
-          console.error('Error storing contract in database:', error);
-          // Continue processing other contracts
-        }
+    for (const contract of contracts) {
+      try {
+        const contractData: Contract = {
+          symbol: contract.symbol,
+          secType: contract.securityType,
+          exchange: contract.exchange,
+          currency: contract.currency,
+          multiplier: contract.multiplier,
+          expiry: contract.expiry,
+          strike: contract.strike,
+          right: contract.right,
+          localSymbol: contract.localSymbol,
+          contractId: contract.contractId
+        };
+        await marketDataService.getOrCreateContract(contractData);
+      } catch (error) {
+        console.error('Error storing contract in database:', error);
       }
     }
 
-    res.json(response.data);
-
+    res.json({ results });
   } catch (error: any) {
     console.error('Error in contract search:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - IB Service may be busy';
-      statusCode = 504;
-    } else if (error.response?.status) {
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error || error.response.statusText;
-    } else {
-      errorMessage = error.message || 'Failed to search for contracts';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to search for contracts');
     res.status(statusCode).json({
       error: 'Failed to search for contracts',
       message: errorMessage,
@@ -183,8 +156,7 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
       right,
       multiplier,
       includeExpired,
-      searchByName,
-      account_mode
+      searchByName
     } = req.body as AdvancedSearchQuery;
 
     // Validate required parameters
@@ -200,74 +172,74 @@ router.post('/search/advanced', async (req: Request, res: Response) => {
       return handleDisabledDataQuery(res, 'Advanced market data search is disabled');
     }
 
-    console.log(`Advanced search for: ${secType} ${symbol || ''} on ${exchange || 'any exchange'}`);
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.post(`${getIBServiceUrl()}/contract/advanced-search`, {
-      symbol: symbol,
-      secType: secType,
-      exchange: exchange,
-      currency: currency,
-      expiry: expiry,
-      strike: strike,
-      right: right,
-      multiplier: multiplier,
-      includeExpired: includeExpired,
-      name: searchByName,  // IB service expects 'name' parameter, not 'searchByName'
-      account_mode: account_mode
-    }, {
-      timeout: 30000,
-      headers: {
-        'Connection': 'close'
-      }
+    if (!broker.searchContractsAdvanced) {
+      return res.status(501).json({
+        error: 'Advanced contract search not supported for this broker',
+        broker: brokerType,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`[${brokerType}] Advanced search for: ${secType} ${symbol || ''} on ${exchange || 'any exchange'}`);
+
+    const contracts = await broker.searchContractsAdvanced({
+      symbol: symbol || '',
+      securityType: secType as SecurityType,
+      exchange,
+      currency,
+      expiry,
+      strike,
+      right: right as 'CALL' | 'PUT' | undefined,
+      multiplier,
+      includeExpired,
+      searchByName
     });
 
-    console.log(`Advanced search found ${response.data?.results?.length || 0} contracts`);
+    const results = contracts.map(c => ({
+      symbol: c.symbol,
+      secType: c.securityType,
+      exchange: c.exchange,
+      currency: c.currency,
+      multiplier: c.multiplier,
+      expiry: c.expiry,
+      strike: c.strike,
+      right: c.right,
+      localSymbol: c.localSymbol,
+      contractId: c.contractId,
+      conId: c.contractId,
+      longName: c.description,
+      description: c.description
+    }));
 
-    // Store contracts in database
-    if (response.data?.results && Array.isArray(response.data.results)) {
-      for (const contract of response.data.results) {
-        try {
-          const contractData: Contract = {
-            symbol: contract.symbol,
-            secType: contract.secType,
-            exchange: contract.exchange,
-            currency: contract.currency,
-            multiplier: contract.multiplier,
-            expiry: contract.expiry,
-            strike: contract.strike,
-            right: contract.right,
-            localSymbol: contract.localSymbol,
-            contractId: contract.contractId
-          };
-          
-          await marketDataService.getOrCreateContract(contractData);
-        } catch (error) {
-          console.error('Error storing contract in database:', error);
-        }
+    console.log(`[${brokerType}] Advanced search found ${results.length} contracts`);
+
+    for (const contract of contracts) {
+      try {
+        const contractData: Contract = {
+          symbol: contract.symbol,
+          secType: contract.securityType,
+          exchange: contract.exchange,
+          currency: contract.currency,
+          multiplier: contract.multiplier,
+          expiry: contract.expiry,
+          strike: contract.strike,
+          right: contract.right,
+          localSymbol: contract.localSymbol,
+          contractId: contract.contractId
+        };
+        await marketDataService.getOrCreateContract(contractData);
+      } catch (error) {
+        console.error('Error storing contract in database:', error);
       }
     }
 
-    res.json(response.data);
-
+    res.json({ results });
   } catch (error: any) {
     console.error('Error in advanced contract search:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - IB Service may be busy';
-      statusCode = 504;
-    } else if (error.response?.status) {
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error || error.response.statusText;
-    } else {
-      errorMessage = error.message || 'Failed to perform advanced search';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to perform advanced search');
     res.status(statusCode).json({
       error: 'Failed to perform advanced search',
       message: errorMessage,
@@ -394,31 +366,29 @@ router.get('/history', async (req: Request, res: Response) => {
             console.log(`Fetching gap data from API: gap=${gapDays.toFixed(0)} days, using period=${gapPeriod}`);
             
             try {
-              // Fetch from API using period (more reliable than date ranges)
-              const gapResponse = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
-                params: {
-                  symbol: symbol,
-                  timeframe: timeframe,
-                  period: gapPeriod,
-                  account_mode: account_mode || 'paper',
-                  secType: secType || 'STK',
-                  exchange: exchange || 'SMART',
-                  currency: currency || 'USD'
-                },
-                timeout: 60000
+              // Fetch from broker using period (more reliable than date ranges)
+              const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+              const broker = brokerFactory.getBroker(brokerType);
+              const gapResponse = await broker.getHistoricalData({
+                symbol,
+                timeframe: timeframe as import('../types/broker.js').Timeframe,
+                period: gapPeriod,
+                securityType: (secType || 'STK') as SecurityType,
+                exchange: exchange || 'SMART',
+                currency: currency || 'USD'
               });
-              
-              console.log(`API response: ${gapResponse.data?.bars?.length || 0} bars received`);
-              
-              if (gapResponse.data?.bars && gapResponse.data.bars.length > 0) {
+
+              console.log(`[${brokerType}] API response: ${gapResponse.bars?.length || 0} bars received`);
+
+              if (gapResponse.bars && gapResponse.bars.length > 0) {
                 // Filter API bars to only include those after latest DB timestamp
-                const newBars = gapResponse.data.bars
-                  .filter((bar: any) => {
-                    const barTime = (bar.timestamp || bar.time) * 1000; // Convert to ms if in seconds
+                const newBars = gapResponse.bars
+                  .filter((bar) => {
+                    const barTime = bar.timestamp instanceof Date ? bar.timestamp.getTime() : (bar as any).time * 1000;
                     return barTime > latestDbTimestamp;
                   })
-                  .map((bar: any) => ({
-                    timestamp: new Date((bar.timestamp || bar.time) * 1000).toISOString(),
+                  .map((bar) => ({
+                    timestamp: bar.timestamp instanceof Date ? bar.timestamp.toISOString() : new Date((bar as any).time * 1000).toISOString(),
                     open: bar.open,
                     high: bar.high,
                     low: bar.low,
@@ -486,118 +456,78 @@ router.get('/history', async (req: Request, res: Response) => {
       }
     }
 
-    // Fallback to IB service
-    console.log(`Fetching historical data from IB service: ${symbol} ${timeframe} ${period}`);
+    // Fallback to broker
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
-      params: {
-        symbol: symbol,
-        timeframe: timeframe,
-        period: period,
-        account_mode: account_mode,
-        start_date: start_date,
-        end_date: end_date,
-        secType: secType,
-        exchange: exchange,
-        currency: currency,
-        include_indicators: include_indicators
-      },
-      timeout: 60000, // 60 second timeout for historical data
-      headers: {
-        'Connection': 'close'
-      }
+    console.log(`[${brokerType}] Fetching historical data: ${symbol} ${timeframe} ${period}`);
+
+    const response = await broker.getHistoricalData({
+      symbol,
+      timeframe: timeframe as import('../types/broker.js').Timeframe,
+      period: period || '1Y',
+      startDate: start_date ? new Date(start_date) : undefined,
+      endDate: end_date ? new Date(end_date) : undefined,
+      securityType: (secType || 'STK') as SecurityType,
+      exchange: exchange || 'SMART',
+      currency: currency || 'USD'
     });
 
-    console.log(`Retrieved ${response.data?.data?.length || 0} bars from IB service for ${symbol}`);
+    console.log(`[${brokerType}] Retrieved ${response.bars?.length || 0} bars for ${symbol}`);
 
     // Store data in database if we have valid data
-    if (response.data?.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+    if (response.bars && response.bars.length > 0) {
       try {
-        // Get or create contract
         const contractData: Contract = {
           symbol: symbol,
           secType: secType || 'STK',
           exchange: exchange,
           currency: currency
         };
-        
         const contractId = await marketDataService.getOrCreateContract(contractData);
-        
-        // Convert data format and store
-        const bars: CandlestickBar[] = response.data.data.map((bar: any) => ({
-          timestamp: new Date(bar.time * 1000), // Convert Unix timestamp to Date
+        const bars: CandlestickBar[] = response.bars.map((bar) => ({
+          timestamp: bar.timestamp instanceof Date ? bar.timestamp : new Date(bar.timestamp),
           open: bar.open,
           high: bar.high,
           low: bar.low,
           close: bar.close,
           volume: bar.volume
-          // WAP and count fields removed
         }));
 
         const storeResult = await marketDataService.storeCandlestickData(contractId, timeframe, bars);
         console.log(`Stored ${storeResult.inserted} new bars, updated ${storeResult.updated} bars for ${symbol} ${timeframe}`);
-
-        // Store technical indicators if included
-        if (includeIndicators && response.data?.indicators) {
-          for (const bar of response.data.data) {
-            const timestamp = new Date(bar.time * 1000);
-            const indicators: TechnicalIndicator[] = [];
-            
-            if (bar.sma_20) indicators.push({ name: 'SMA', period: 20, value: bar.sma_20 });
-            if (bar.sma_50) indicators.push({ name: 'SMA', period: 50, value: bar.sma_50 });
-            if (bar.ema_12) indicators.push({ name: 'EMA', period: 12, value: bar.ema_12 });
-            if (bar.ema_26) indicators.push({ name: 'EMA', period: 26, value: bar.ema_26 });
-            if (bar.rsi) indicators.push({ name: 'RSI', period: 14, value: bar.rsi });
-            if (bar.macd) indicators.push({ name: 'MACD', period: 12, value: bar.macd });
-            if (bar.macd_signal) indicators.push({ name: 'MACD_SIGNAL', period: 26, value: bar.macd_signal });
-            if (bar.bb_upper) indicators.push({ name: 'BB_UPPER', period: 20, value: bar.bb_upper });
-            if (bar.bb_middle) indicators.push({ name: 'BB_MIDDLE', period: 20, value: bar.bb_middle });
-            if (bar.bb_lower) indicators.push({ name: 'BB_LOWER', period: 20, value: bar.bb_lower });
-
-            if (indicators.length > 0) {
-              await marketDataService.storeTechnicalIndicators(contractId, timeframe, timestamp, indicators);
-            }
-          }
-        }
-
       } catch (storeError) {
         console.error('Error storing data in database:', storeError);
-        // Continue with response even if storage fails
       }
     }
 
-    // Ensure consistent response format regardless of source
-    const responseData = response.data;
-    
+    // Ensure consistent response format - bars with timestamp/time in unix seconds for API compatibility
+    const barsForResponse = response.bars.map((bar) => {
+      const ts = bar.timestamp instanceof Date ? bar.timestamp.getTime() / 1000 : (bar as any).time ?? (bar as any).timestamp;
+      return {
+        timestamp: ts,
+        time: ts,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume
+      };
+    });
+
     res.json({
       symbol: symbol,
       timeframe: timeframe,
-      bars: responseData.data || responseData.bars || [], // Handle different IB service response formats
-      count: responseData.data?.length || responseData.bars?.length || 0,
-      source: 'ib_service',
-      last_updated: responseData.last_updated || new Date().toISOString(),
+      bars: barsForResponse,
+      data: barsForResponse,
+      count: barsForResponse.length,
+      source: response.source || brokerType,
+      last_updated: response.lastUpdated?.toISOString?.() || new Date().toISOString(),
       timestamp: new Date().toISOString()
     });
-
   } catch (error: any) {
     console.error('Error fetching historical data:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - IB Service may be busy';
-      statusCode = 504;
-    } else if (error.response?.status) {
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error || error.response.statusText;
-    } else {
-      errorMessage = error.message || 'Failed to fetch historical data';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch historical data');
     res.status(statusCode).json({
       error: 'Failed to fetch historical data',
       message: errorMessage,
@@ -609,13 +539,13 @@ router.get('/history', async (req: Request, res: Response) => {
 // Real-time data endpoint
 router.get('/realtime', async (req: Request, res: Response) => {
   try {
-    const { symbol, account_mode } = req.query;
+    const { symbol } = req.query;
 
     // Validate required parameters
-    if (!symbol) {
+    if (!symbol || typeof symbol !== 'string') {
       return res.status(400).json({
         error: 'Missing required parameter: symbol',
-        received: { symbol, account_mode }
+        received: { symbol }
       });
     }
 
@@ -624,42 +554,36 @@ router.get('/realtime', async (req: Request, res: Response) => {
       return handleDisabledDataQuery(res, 'Real-time market data querying is disabled');
     }
 
-    console.log(`Fetching real-time data for ${symbol}`);
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/market-data/realtime`, {
-      params: {
-        symbol: symbol,
-        account_mode: account_mode
-      },
-      timeout: 10000, // 10 second timeout for real-time data
-      headers: {
-        'Connection': 'close'
-      }
-    });
+    console.log(`[${brokerType}] Fetching real-time data for ${symbol}`);
 
-    console.log(`Retrieved real-time data for ${symbol}`);
+    const quote = await broker.getQuote(symbol);
 
-    res.json(response.data);
+    // Map to API response format (compatible with ib_service /market-data/realtime)
+    const response = {
+      symbol: quote.symbol,
+      bid: quote.bid,
+      ask: quote.ask,
+      last: quote.last,
+      volume: quote.volume,
+      bidSize: quote.bidSize,
+      askSize: quote.askSize,
+      lastSize: quote.lastSize,
+      open: quote.open,
+      high: quote.high,
+      low: quote.low,
+      close: quote.close,
+      previousClose: quote.previousClose,
+      timestamp: quote.timestamp.toISOString()
+    };
 
+    console.log(`[${brokerType}] Retrieved real-time data for ${symbol}`);
+    res.json(response);
   } catch (error: any) {
     console.error('Error fetching real-time data:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - IB Service may be busy';
-      statusCode = 504;
-    } else if (error.response?.status) {
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error || error.response.statusText;
-    } else {
-      errorMessage = error.message || 'Failed to fetch real-time data';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to fetch real-time data');
     res.status(statusCode).json({
       error: 'Failed to fetch real-time data',
       message: errorMessage,
@@ -735,50 +659,34 @@ router.get('/indicators', async (req: Request, res: Response) => {
       }
     }
 
-    // Fallback to IB service
-    console.log(`Calculating technical indicators for ${symbol} ${timeframe}`);
+    // Fallback to broker service (IB has /market-data/indicators; other brokers may add support)
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
 
-    const response = await axios.get(`${getIBServiceUrl()}/market-data/indicators`, {
+    console.log(`[${brokerType}] Calculating technical indicators for ${symbol} ${timeframe}`);
+
+    const response = await axios.get(`${broker.getServiceUrl()}/market-data/indicators`, {
       params: {
         symbol: symbol,
         timeframe: timeframe,
         period: period,
         indicators: indicators,
-        account_mode: account_mode
+        account_mode: req.query.account_mode
       },
-      timeout: 30000, // 30 second timeout for indicators
-      headers: {
-        'Connection': 'close'
-      }
+      timeout: 30000,
+      headers: { 'Connection': 'close' }
     });
 
-    console.log(`Calculated indicators for ${symbol} ${timeframe}`);
+    console.log(`[${brokerType}] Calculated indicators for ${symbol} ${timeframe}`);
 
     res.json({
       ...response.data,
-      source: 'ib_service',
+      source: brokerType.toLowerCase(),
       timestamp: new Date().toISOString()
     });
-
   } catch (error: any) {
     console.error('Error calculating technical indicators:', error);
-    
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
-      errorMessage = 'IB Service connection refused - service may be starting up';
-      statusCode = 503;
-    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - IB Service may be busy';
-      statusCode = 504;
-    } else if (error.response?.status) {
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error || error.response.statusText;
-    } else {
-      errorMessage = error.message || 'Failed to calculate technical indicators';
-    }
-    
+    const { statusCode, errorMessage } = getBrokerErrorResponse(error, 'Failed to calculate technical indicators');
     res.status(statusCode).json({
       error: 'Failed to calculate technical indicators',
       message: errorMessage,
@@ -915,7 +823,7 @@ router.post('/upload', async (req: Request, res: Response) => {
 // Bulk data collection endpoint
 router.post('/bulk-collect', async (req: Request, res: Response) => {
   try {
-    const { symbols, timeframes, period, account_mode, secType, exchange, currency } = req.body;
+    const { symbols, timeframes, period, account_mode, secType, exchange, currency, broker: brokerParam } = req.body;
 
     // Validate required parameters
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
@@ -939,7 +847,10 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
       return handleDisabledDataQuery(res, 'Bulk data collection is disabled');
     }
 
-    console.log(`Starting bulk collection for ${symbols.length} symbols across ${timeframes.length} timeframes`);
+    const brokerType = (brokerParam && ['IB', 'MT5', 'CTRADER'].includes(brokerParam.toUpperCase())) ? brokerParam.toUpperCase() : (req.brokerType ?? getBrokerFromRequest(req));
+    const broker = brokerFactory.getBroker(brokerType);
+
+    console.log(`[${brokerType}] Starting bulk collection for ${symbols.length} symbols across ${timeframes.length} timeframes`);
 
     const results: Record<string, Record<string, any>> = {};
     const summary = {
@@ -953,55 +864,33 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
     // Process each symbol
     for (const symbol of symbols) {
       results[symbol] = {};
-      
+
       // Process each timeframe for this symbol
       for (const timeframe of timeframes) {
         try {
-          console.log(`Collecting ${symbol} ${timeframe}...`);
-          
-          const requestParams = {
+          console.log(`[${brokerType}] Collecting ${symbol} ${timeframe}...`);
+
+          const response = await broker.getHistoricalData({
             symbol: symbol.toUpperCase(),
-            timeframe: timeframe,
+            timeframe: timeframe as import('../types/broker.js').Timeframe,
             period: period || '1Y',
-            account_mode: account_mode || 'paper',
-            secType: secType || 'STK',
+            securityType: (secType || 'STK') as SecurityType,
             exchange: exchange || 'SMART',
             currency: currency || 'USD'
-          };
-          
-          console.log(`Request params for ${symbol} ${timeframe}:`, requestParams);
-          
-          // Fetch data from IB service
-          const response = await axios.get(`${getIBServiceUrl()}/market-data/history`, {
-            params: requestParams,
-            timeout: 60000 // Increased to 60 second timeout for bulk operations
           });
-          
-          console.log(`Response status for ${symbol} ${timeframe}: ${response.status}`);
 
-          const data = response.data;
-          
-          // Handle both possible response formats: data.bars (from IB service) or data.data (legacy)
-          const bars = data.bars || data.data || [];
-          
-          console.log(`Bulk collection for ${symbol} ${timeframe}: received response with ${bars.length} bars`);
-          console.log(`Response structure:`, {
-            hasBars: !!data.bars,
-            hasData: !!data.data,
-            barsLength: data.bars?.length || 0,
-            dataLength: data.data?.length || 0,
-            responseKeys: Object.keys(data)
-          });
-          
-          if (data && Array.isArray(bars) && bars.length > 0) {
-            // Store fetched data without uploading to database
+          const bars = response.bars || [];
+
+          console.log(`[${brokerType}] Bulk collection for ${symbol} ${timeframe}: received ${bars.length} bars`);
+
+          if (Array.isArray(bars) && bars.length > 0) {
             results[symbol][timeframe] = {
               success: true,
               records_fetched: bars.length,
-              records_uploaded: 0, // No automatic upload
+              records_uploaded: 0,
               records_skipped: 0,
-              source: data.source || 'IB Gateway',
-              data: bars // Store the actual data for potential future use
+              source: response.source || brokerType,
+              data: bars
             };
 
             summary.successful_operations++;
@@ -1009,20 +898,13 @@ router.post('/bulk-collect', async (req: Request, res: Response) => {
             
             console.log(`Successfully fetched ${symbol} ${timeframe}: ${bars.length} records collected`);
           } else {
-            const errorMsg = `No data received from IB service - bars: ${bars.length}, response keys: ${Object.keys(data).join(', ')}`;
-            console.error(`Bulk collection failed for ${symbol} ${timeframe}: ${errorMsg}`);
-            
+            const errorMsg = `No data received from broker - bars: ${bars.length}`;
+            console.error(`[${brokerType}] Bulk collection failed for ${symbol} ${timeframe}: ${errorMsg}`);
+
             results[symbol][timeframe] = {
               success: false,
               error: errorMsg,
-              records_fetched: 0,
-              response_debug: {
-                hasBars: !!data.bars,
-                hasData: !!data.data,
-                responseKeys: Object.keys(data),
-                barsLength: data.bars?.length || 0,
-                dataLength: data.data?.length || 0
-              }
+              records_fetched: 0
             };
             summary.failed_operations++;
             summary.errors.push(`${symbol} ${timeframe}: ${errorMsg}`);
@@ -1233,9 +1115,11 @@ function getExpectedInterval(timeframe: string): number {
 // System health endpoint
 router.get('/health', async (req: Request, res: Response) => {
   try {
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
     const health = {
       database: false,
-      ib_service: false,
+      broker_service: false,
+      broker_type: brokerType,
       timestamp: new Date().toISOString()
     };
 
@@ -1247,22 +1131,22 @@ router.get('/health', async (req: Request, res: Response) => {
       console.error('Database health check failed:', error);
     }
 
-    // Check IB service health
+    // Check broker service health (via BrokerFactory)
     try {
-      const response = await axios.get(`${getIBServiceUrl()}/health`, { timeout: 5000 });
-      health.ib_service = response.status === 200;
+      const broker = brokerFactory.getBroker(brokerType);
+      const result = await broker.healthCheck();
+      health.broker_service = result.healthy;
     } catch (error) {
-      console.error('IB service health check failed:', error);
+      console.error('Broker service health check failed:', error);
     }
 
-    const overall_healthy = health.database && health.ib_service;
+    const overall_healthy = health.database && health.broker_service;
 
     res.json({
       healthy: overall_healthy,
       services: health,
       timestamp: health.timestamp
     });
-
   } catch (error: any) {
     res.status(500).json({
       healthy: false,
@@ -1362,22 +1246,25 @@ router.get('/stream', async (req: Request, res: Response) => {
       return handleDisabledDataQuery(res, 'Real-time streaming is disabled');
     }
 
-    console.log(`Starting real-time stream for ${symbol} ${timeframe}`);
+    const brokerType = req.brokerType ?? getBrokerFromRequest(req);
+    const broker = brokerFactory.getBroker(brokerType);
+
+    console.log(`[${brokerType}] Starting real-time stream for ${symbol} ${timeframe}`);
 
     // Get latest historical data point
     const latestData = await marketDataService.getLatestData(symbol, timeframe, 1);
     const lastHistoricalTime = latestData.length > 0 ? latestData[0].timestamp : null;
 
-    // Get current real-time data
-    const realtimeResponse = await axios.get(`${getIBServiceUrl()}/market-data/realtime`, {
-      params: {
-        symbol: symbol,
-        account_mode: account_mode
-      },
-      timeout: 10000
-    });
-
-    const realtimeData = realtimeResponse.data;
+    // Get current real-time data from broker
+    const quote = await broker.getQuote(symbol);
+    const realtimeData = {
+      symbol: quote.symbol,
+      last: quote.last,
+      bid: quote.bid,
+      ask: quote.ask,
+      volume: quote.volume,
+      timestamp: quote.timestamp.toISOString()
+    };
     const currentTime = new Date();
 
     // Calculate if we need to create a new bar or update existing one

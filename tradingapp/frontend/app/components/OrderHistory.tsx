@@ -13,7 +13,7 @@ interface Order {
   action: 'BUY' | 'SELL';
   quantity: number;
   price?: number;
-  ib_order_id?: number;
+  brokerOrderId?: number | string;
   status: 'pending' | 'submitted' | 'filled' | 'cancelled' | 'rejected' | 'partial';
   filled_quantity?: number;
   avg_fill_price?: number;

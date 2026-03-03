@@ -12,7 +12,10 @@ import marketDataCollectionRoutes from './routes/marketDataCollection.js';
 import strategiesRoutes from './routes/strategies.js';
 import tradingRoutes from './routes/trading.js';
 import ibConnectionRoutes from './routes/ibConnections.js';
+import brokerConnectionRoutes from './routes/brokerConnections.js';
+import ctraderConnectionRoutes from './routes/ctraderConnections.js';
 import systemSettingsRoutes from './routes/systemSettings.js';
+import { brokerSelectionMiddleware } from './middleware/brokerSelection.js';
 import axios from 'axios';
 import { dbService } from './services/database.js';
 import { systemSettingsService } from './services/systemSettingsService.js';
@@ -119,9 +122,9 @@ app.get('/api/database/health', async (req, res) => {
   }
 });
 
-// Routes
-app.use('/api/market-data', marketDataRoutes);
-app.use('/api/account', accountRoutes);
+// Routes (broker selection middleware for multi-broker support)
+app.use('/api/market-data', brokerSelectionMiddleware, marketDataRoutes);
+app.use('/api/account', brokerSelectionMiddleware, accountRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/constraint-test', constraintTestRoutes);
@@ -130,6 +133,8 @@ app.use('/api/market-data', marketDataCollectionRoutes);
 app.use('/api/strategies', strategiesRoutes);
 app.use('/api/trading', tradingRoutes);
 app.use('/api/ib-connections', ibConnectionRoutes);
+app.use('/api/broker-connections', brokerConnectionRoutes);
+app.use('/api/ctrader-connections', ctraderConnectionRoutes);
 app.use('/api/system-settings', systemSettingsRoutes);
 
 // Root endpoint
@@ -149,6 +154,8 @@ app.get('/', (req, res) => {
       trading: '/api/trading',
       settings: '/api/settings',
       ib_connections: '/api/ib-connections',
+      broker_connections: '/api/broker-connections',
+      ctrader_connections: '/api/ctrader-connections',
       system_settings: '/api/system-settings'
     }
   });
