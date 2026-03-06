@@ -113,6 +113,16 @@ DAEMON_EOF
         print_info "Added sysctl setting to /etc/sysctl.conf"
     fi
     
+    # Redis: enable memory overcommit so background save/replication works under low memory
+    print_info "Setting host sysctl for Redis (vm.overcommit_memory)..."
+    sudo sysctl -w vm.overcommit_memory=1 2>/dev/null || true
+    if ! grep -q "vm.overcommit_memory" /etc/sysctl.conf 2>/dev/null; then
+        echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf > /dev/null
+        print_info "Added vm.overcommit_memory=1 to /etc/sysctl.conf"
+    else
+        print_status "vm.overcommit_memory already in /etc/sysctl.conf"
+    fi
+    
     # Restart Docker to apply changes
     print_info "Restarting Docker daemon..."
     sudo systemctl restart docker
