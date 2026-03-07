@@ -2,7 +2,7 @@
 
 **Purpose:** Capture what is left to build so the plan can be used for prioritisation and implementation later.  
 **Based on:** Codebase review and `/docs` (MULTI_BROKER_ARCHITECTURE_REVIEW.md, CTRADER_INTEGRATION_PLAN.md) and root docs (0-README, 3-FEATURES).  
-**Last updated:** March 2025
+**Last updated:** March 2026
 
 ---
 
@@ -11,16 +11,16 @@
 ### 1.1 Implemented
 
 - **Multi-broker backbone:** BrokerFactory, IBBroker, broker selection middleware, `getBrokerServiceUrl(brokerType)`, account and market-data routes via broker abstraction, BrokerConnectionResolver, shared Python (indicators, backtesting, models), `broker_order_id` rename.
-- **cTrader scaffolding:** CTraderBroker (TypeScript), ctrader_service (Python FastAPI with stub endpoints), ctrader_connection_profiles table, ctraderConnectionService, `/api/ctrader-connections` routes, Connections page with “IB Connections” and “cTrader Connections” tabs.
+- **cTrader scaffolding:** CTraderBroker (TypeScript), ctrader_service (Python FastAPI with stub endpoints), ctrader_connection_profiles table, ctraderConnectionService, `/api/ctrader-connections` routes, Connections page with “IB Connections” and “cTrader Connections” tabs. **cTrader OAuth (C1, C2):** real OAuth code exchange in ctrader_service, OAuth callback page and backend token persistence, Connect button and Client Secret on profile form, Edit cTrader profile, "Connected" badge when tokens are stored.
 - **Core features:** Download (single/bulk/validation/health), DB connectivity test, trading setup & chart spawning, TradingView charts (multiple timeframes), market data filter, account dashboard, strategies, order placement/history, system settings, IB connection management.
 
 ### 1.2 Gaps (High Level)
 
-- cTrader is **stub-only**: no real OAuth, no real cTrader Open API (ProtoOA) calls.
+- cTrader has **real OAuth (C1, C2)**; ProtoOA (account, positions, orders, history) is still stubbed.
 - WebSocket and health are **IB-only**; not broker-agnostic.
 - **3-FEATURES.md “Advanced Features”** (watchlists, portfolio integration, market scanning, data export) are largely **not implemented**.
 - **MT5** is explicitly not implemented (throws NOT_IMPLEMENTED).
-- **OAuth callback** for cTrader and optional **broker selector** in UI are pending.
+- **Broker selector** (F1) in Account/Trading UI is pending.
 
 ---
 
@@ -28,18 +28,18 @@
 
 **Ref:** `docs/CTRADER_INTEGRATION_PLAN.md`, `ctrader_service/main.py` (stubs/TODOs).
 
-| # | Task | Description | Priority |
-|---|-----|-------------|----------|
-| C1 | OAuth flow in ctrader_service | Implement OAuth code exchange and token storage using ctrader-open-api (replace TODO in `connection_connect`). | High |
-| C2 | OAuth callback in frontend | Add route/page for redirect (e.g. `/connections/ctrader/callback`) to receive auth code and pass to backend; persist tokens via ctrader-connections API. | High |
-| C3 | Token refresh | Refresh access token before expiry (background job or on-demand); store refreshed tokens in `ctrader_connection_profiles`. | High |
-| C4 | Account data (real) | Replace account stubs with ProtoOAGetAccountListReq / cash flow (or REST equivalent) in ctrader_service. | High |
-| C5 | Positions (real) | Implement ProtoOAGetPositionListReq in ctrader_service; map to BrokerPosition. | High |
-| C6 | Orders (real) | Implement ProtoOAGetOrderListReq, ProtoOANewOrderReq, ProtoOACancelOrderReq in ctrader_service. | High |
-| C7 | Historical data (real) | Implement ProtoOAGetTrendbarsReq in ctrader_service; map timeframes to cTrader format. | High |
-| C8 | Real-time quotes (real) | Implement ProtoOASubscribeSpotsReq + spot updates (or REST) in ctrader_service. | Medium |
-| C9 | Contract/symbol search (real) | Implement ProtoOAGetSymbolsListReq / symbol search in ctrader_service; map to BrokerContract. | Medium |
-| C10 | Symbol mapping | Harden `toBrokerSymbol` / `toCanonicalSymbol` (e.g. config or DB table) for forex, CFDs, indices (see CTRADER_INTEGRATION_PLAN §7). | Medium |
+| # | Task | Description | Priority | Status |
+|---|-----|-------------|----------|--------|
+| C1 | OAuth flow in ctrader_service | Implement OAuth code exchange and token storage using ctrader-open-api (replace TODO in `connection_connect`). | High | Done |
+| C2 | OAuth callback in frontend | Add route/page for redirect (e.g. `/connections/ctrader/callback`) to receive auth code and pass to backend; persist tokens via ctrader-connections API. | High | Done |
+| C3 | Token refresh | Refresh access token before expiry (background job or on-demand); store refreshed tokens in `ctrader_connection_profiles`. | High | — |
+| C4 | Account data (real) | Replace account stubs with ProtoOAGetAccountListReq / cash flow (or REST equivalent) in ctrader_service. | High | — |
+| C5 | Positions (real) | Implement ProtoOAGetPositionListReq in ctrader_service; map to BrokerPosition. | High | — |
+| C6 | Orders (real) | Implement ProtoOAGetOrderListReq, ProtoOANewOrderReq, ProtoOACancelOrderReq in ctrader_service. | High | — |
+| C7 | Historical data (real) | Implement ProtoOAGetTrendbarsReq in ctrader_service; map timeframes to cTrader format. | High | — |
+| C8 | Real-time quotes (real) | Implement ProtoOASubscribeSpotsReq + spot updates (or REST) in ctrader_service. | Medium | — |
+| C9 | Contract/symbol search (real) | Implement ProtoOAGetSymbolsListReq / symbol search in ctrader_service; map to BrokerContract. | Medium | — |
+| C10 | Symbol mapping | Harden `toBrokerSymbol` / `toCanonicalSymbol` (e.g. config or DB table) for forex, CFDs, indices (see CTRADER_INTEGRATION_PLAN §7). | Medium | — |
 
 ---
 
@@ -59,11 +59,11 @@
 
 **Ref:** CTRADER_INTEGRATION_PLAN Phase 4.
 
-| # | Task | Description | Priority |
-|---|-----|-------------|----------|
-| F1 | Broker selector (Account / Trading) | Add UI to choose broker (IB vs cTrader) on Account and Trading/Chart flows; pass `?broker=IB|CTRADER` (or equivalent) to API. | Medium |
-| F2 | cTrader connection status | Show cTrader connection status (and errors) clearly on Connections page and, if relevant, in header/context. | Medium |
-| F3 | Generalise connection context | Consider BrokerConnectionContext (or extend IBConnectionContext) to support multiple brokers for status and broker selection. | Low |
+| # | Task | Description | Priority | Status |
+|---|-----|-------------|----------|--------|
+| F1 | Broker selector (Account / Trading) | Add UI to choose broker (IB vs cTrader) on Account and Trading/Chart flows; pass `?broker=IB|CTRADER` (or equivalent) to API. | Medium | — |
+| F2 | cTrader connection status | Show cTrader connection status (and errors) clearly on Connections page and, if relevant, in header/context. | Medium | Done |
+| F3 | Generalise connection context | Consider BrokerConnectionContext (or extend IBConnectionContext) to support multiple brokers for status and broker selection. | Low | — |
 
 ---
 
@@ -104,7 +104,7 @@
 
 ## 8. Suggested Implementation Order
 
-1. **cTrader E2E (high):** C1 → C2 → C3 (OAuth + callback + refresh), then C4–C7 (account, positions, orders, history).
+1. **cTrader E2E (high):** C1–C2 done. Next: C3 (OAuth + callback + refresh), then C4–C7 (account, positions, orders, history).
 2. **Multi-broker consistency (high):** M1 (WebSocket broker-aware), then M2 (health).
 3. **cTrader UX (medium):** C8–C10, F1–F2 (quotes, symbol search, mapping, broker selector, status).
 4. **Advanced features (medium/low):** A1, A4, then A2; A3 and S1–S2 as capacity allows.
@@ -121,7 +121,7 @@
 | cTrader backend | `backend/src/services/brokers/CTraderBroker.ts`, `backend/src/services/ctraderConnectionService.ts`, `backend/src/routes/ctraderConnections.ts` |
 | WebSocket (IB-only) | `backend/src/index.ts` – `subscribe-market-data`, `unsubscribe-market-data`, `getIBServiceUrl()` |
 | Health (IB-only) | `backend/src/index.ts` – `/api/health` |
-| Connections UI | `frontend/app/connections/page.tsx` (IB + cTrader tabs) |
+| Connections UI | `frontend/app/connections/page.tsx` (IB + cTrader tabs); OAuth callback `frontend/app/connections/ctrader/callback/page.tsx` |
 | Account / trading UI | `frontend/app/account/page.tsx`, chart/configure pages – no broker selector yet |
 | Features doc | `3-FEATURES.md` (Advanced Features, Search & Discovery) |
 | Multi-broker design | `docs/MULTI_BROKER_ARCHITECTURE_REVIEW.md`, `docs/CTRADER_INTEGRATION_PLAN.md` |
