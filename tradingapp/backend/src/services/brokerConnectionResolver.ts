@@ -181,7 +181,7 @@ class BrokerConnectionResolver {
           profileId: profile.id,
           profileName: profile.name,
           accountMode: profile.account_mode as AccountMode,
-          lastError: profile.last_error,
+          lastError: profile.last_error ?? undefined,
           details: {
             clientId: profile.client_id,
             ctraderAccountId: profile.ctrader_account_id
