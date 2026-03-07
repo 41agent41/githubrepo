@@ -22,7 +22,7 @@ export interface CTraderConnectionProfile {
   is_active: boolean;
   is_default: boolean;
   last_connected_at?: Date;
-  last_error?: string;
+  last_error?: string | null;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -112,7 +112,7 @@ class CTraderConnectionService {
 
     for (const [key, value] of Object.entries(updates)) {
       const col = fieldMap[key];
-      if (col !== undefined && value !== undefined) {
+      if (col !== undefined && (value !== undefined || value === null)) {
         setClauses.push(`${col} = $${paramIndex}`);
         values.push(value);
         paramIndex++;

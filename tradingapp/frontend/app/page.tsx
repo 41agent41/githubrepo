@@ -104,8 +104,8 @@ export default function HomePage() {
             <div className="flex items-start sm:items-center">
               <div className="text-2xl sm:text-3xl lg:text-4xl mr-3 sm:mr-4 flex-shrink-0">🔌</div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-base sm:text-lg lg:text-xl font-medium text-white truncate">IB Connections</h3>
-                <p className="text-xs sm:text-sm lg:text-base text-gray-400 mt-1 line-clamp-2">Configure IB Gateway & TWS connections (Live/Paper)</p>
+                <h3 className="text-base sm:text-lg lg:text-xl font-medium text-white truncate">Connections</h3>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-400 mt-1 line-clamp-2">Configure IB Gateway, cTrader, and broker connections (Live/Paper)</p>
               </div>
             </div>
           </a>

@@ -18,6 +18,7 @@ interface CTraderConnectionProfile {
   is_default: boolean;
   last_connected_at?: string;
   last_error?: string;
+  access_token?: string; // present when connected (API omits client_secret)
 }
 
 interface IBConnectionProfile {
@@ -96,10 +97,13 @@ export default function ConnectionsPage() {
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [showCtraderForm, setShowCtraderForm] = useState(false);
-  const [ctraderFormData, setCtraderFormData] = useState<Partial<CTraderConnectionProfile>>({
+  const [editingCtraderProfile, setEditingCtraderProfile] = useState<CTraderConnectionProfile | null>(null);
+  const [ctraderFormData, setCtraderFormData] = useState<Partial<CTraderConnectionProfile & { client_secret?: string }>>({
     name: '',
+    description: '',
     account_mode: 'paper',
     client_id: '',
+    client_secret: '',
     redirect_uri: '',
     is_active: false,
     is_default: false
@@ -913,7 +917,11 @@ export default function ConnectionsPage() {
           </p>
           {!showCtraderForm && (
             <button
-              onClick={() => { setShowCtraderForm(true); setCtraderFormData({ name: '', account_mode: 'paper', client_id: '', redirect_uri: '', is_active: false, is_default: false }); }}
+              onClick={() => {
+                setEditingCtraderProfile(null);
+                setCtraderFormData({ name: '', description: '', account_mode: 'paper', client_id: '', client_secret: '', redirect_uri: '', is_active: false, is_default: false });
+                setShowCtraderForm(true);
+              }}
               className="mb-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-lg font-semibold transition-all duration-200"
             >
               + Add cTrader Profile
@@ -924,17 +932,24 @@ export default function ConnectionsPage() {
               onSubmit={async (e) => {
                 e.preventDefault();
                 try {
-                  const res = await fetch(`${apiUrl}/api/ctrader-connections/profiles`, {
-                    method: 'POST',
+                  const url = editingCtraderProfile
+                    ? `${apiUrl}/api/ctrader-connections/profiles/${editingCtraderProfile.id}`
+                    : `${apiUrl}/api/ctrader-connections/profiles`;
+                  const method = editingCtraderProfile ? 'PUT' : 'POST';
+                  const payload = { ...ctraderFormData };
+                  if ((payload as { client_secret?: string }).client_secret === '') delete (payload as { client_secret?: string }).client_secret;
+                  const res = await fetch(url, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(ctraderFormData)
+                    body: JSON.stringify(payload)
                   });
                   if (!res.ok) {
                     const d = await res.json();
-                    throw new Error(d.error || d.message || 'Failed to create');
+                    throw new Error(d.error || d.message || (editingCtraderProfile ? 'Failed to update' : 'Failed to create'));
                   }
-                  showSuccess('Profile created');
+                  showSuccess(editingCtraderProfile ? 'Profile updated' : 'Profile created');
                   setShowCtraderForm(false);
+                  setEditingCtraderProfile(null);
                   fetchCtraderProfiles();
                 } catch (err: unknown) {
                   setError(getErrorMessage(err));
@@ -942,13 +957,32 @@ export default function ConnectionsPage() {
               }}
               className="space-y-4 mb-6"
             >
+              <h3 className="text-lg font-semibold text-gray-200">
+                {editingCtraderProfile ? 'Edit cTrader Profile' : 'New cTrader Profile'}
+              </h3>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Profile Name *</label>
                 <input type="text" required value={ctraderFormData.name} onChange={(e) => setCtraderFormData({ ...ctraderFormData, name: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg" placeholder="e.g., cTrader Demo" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                <input type="text" value={ctraderFormData.description || ''} onChange={(e) => setCtraderFormData({ ...ctraderFormData, description: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg" placeholder="Optional" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Client ID *</label>
                 <input type="text" required value={ctraderFormData.client_id} onChange={(e) => setCtraderFormData({ ...ctraderFormData, client_id: e.target.value })} className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg font-mono" placeholder="From openapi.ctrader.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Client Secret {editingCtraderProfile ? '(leave blank to keep current)' : '*'}</label>
+                <input
+                  type="password"
+                  required={!editingCtraderProfile}
+                  value={(ctraderFormData as { client_secret?: string }).client_secret ?? ''}
+                  onChange={(e) => setCtraderFormData({ ...ctraderFormData, client_secret: e.target.value })}
+                  className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg font-mono"
+                  placeholder={editingCtraderProfile ? '••••••••' : 'From openapi.ctrader.com'}
+                  autoComplete="off"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Redirect URI</label>
@@ -962,8 +996,14 @@ export default function ConnectionsPage() {
                 </select>
               </div>
               <div className="flex gap-4">
-                <button type="submit" className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg font-semibold">Create Profile</button>
-                <button type="button" onClick={() => setShowCtraderForm(false)} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg font-semibold">{editingCtraderProfile ? 'Update Profile' : 'Create Profile'}</button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCtraderForm(false); setEditingCtraderProfile(null); }}
+                  className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
               </div>
             </form>
           )}
@@ -972,16 +1012,50 @@ export default function ConnectionsPage() {
           ) : (
             <div className="space-y-4">
               {ctraderProfiles.map((p) => (
-                <div key={p.id} className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg flex justify-between items-center">
+                <div key={p.id} className="p-4 bg-slate-900/50 border border-slate-700 rounded-lg flex flex-wrap justify-between items-center gap-3">
                   <div>
                     <span className="font-semibold">{p.name}</span>
                     <span className={`ml-2 px-2 py-0.5 text-xs rounded ${p.account_mode === 'live' ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>{p.account_mode}</span>
                     {p.is_default && <span className="ml-2 text-xs text-purple-400">Default</span>}
+                    {p.access_token && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-green-900/50 text-green-300 border border-green-700">Connected</span>}
+                    {p.description && <p className="text-gray-400 text-sm mt-1">{p.description}</p>}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={async () => { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}/activate`, { method: 'POST' }); showSuccess('Activated'); fetchCtraderProfiles(); }} className="px-3 py-1 bg-green-600/20 border border-green-600 text-green-300 rounded text-sm">Activate</button>
                     <button onClick={async () => { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}/set-default`, { method: 'POST' }); showSuccess('Set default'); fetchCtraderProfiles(); }} className="px-3 py-1 bg-slate-700 rounded text-sm">Set Default</button>
-                    <button onClick={async () => { if (confirm('Delete?')) { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}`, { method: 'DELETE' }); showSuccess('Deleted'); fetchCtraderProfiles(); } }} className="px-3 py-1 bg-red-900/30 border border-red-800 text-red-400 rounded text-sm">Delete</button>
+                    <button
+                      onClick={() => {
+                        if (!p.redirect_uri?.trim()) {
+                          setError('Set Redirect URI on this profile (e.g. ' + (typeof window !== 'undefined' ? window.location.origin : '') + '/connections/ctrader/callback)');
+                          return;
+                        }
+                        const redirectUri = encodeURIComponent(p.redirect_uri.trim());
+                        const authUrl = `https://id.ctrader.com/my/settings/openapi/grantingaccess/?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${redirectUri}&scope=trading&product=web&state=${p.id}`;
+                        window.location.href = authUrl;
+                      }}
+                      className="px-3 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500 text-cyan-300 rounded text-sm"
+                    >
+                      Connect
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingCtraderProfile(p);
+                        setCtraderFormData({
+                          name: p.name,
+                          description: p.description ?? '',
+                          account_mode: p.account_mode,
+                          client_id: p.client_id,
+                          redirect_uri: p.redirect_uri ?? '',
+                          is_active: p.is_active,
+                          is_default: p.is_default
+                        });
+                        setShowCtraderForm(true);
+                      }}
+                      className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm"
+                    >
+                      Edit
+                    </button>
+                    <button onClick={async () => { if (confirm('Delete this profile?')) { await fetch(`${apiUrl}/api/ctrader-connections/profiles/${p.id}`, { method: 'DELETE' }); showSuccess('Deleted'); fetchCtraderProfiles(); } }} className="px-3 py-1 bg-red-900/30 border border-red-800 text-red-400 rounded text-sm">Delete</button>
                   </div>
                 </div>
               ))}

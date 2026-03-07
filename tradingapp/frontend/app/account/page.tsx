@@ -624,7 +624,7 @@ export default function AccountPage() {
               </a>
             </div>
             <div className="text-sm text-gray-600">
-              💡 Use the IB Connections page to switch between profiles or configure new connections.
+              💡 Use the Connections page to switch between profiles or configure new connections.
             </div>
           </div>
         </div>
