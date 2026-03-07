@@ -2,15 +2,15 @@
 cTrader Service - REST API for cTrader Open API integration
 
 Exposes endpoints aligned with IBrokerService for use by CTraderBroker.
-Uses stub/mock implementations when no cTrader connection is configured.
-Real cTrader API integration requires OAuth flow and ctrader-open-api.
+OAuth code exchange (C1) implemented; token storage is returned to backend for DB persistence.
 """
 
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -25,13 +25,17 @@ logger = logging.getLogger(__name__)
 # Configuration
 ACCOUNT_MODE = os.getenv('CTRADER_ACCOUNT_MODE', 'paper')  # demo/live
 CORS_ORIGINS = os.getenv('CTRADER_CORS_ORIGINS', '').split(',') if os.getenv('CTRADER_CORS_ORIGINS') else []
+# cTrader OAuth token endpoint (same URL for demo and live per Open API docs)
+CTRADER_TOKEN_BASE = os.getenv('CTRADER_OPENAPI_BASE', 'https://openapi.ctrader.com')
 
-# Connection state (stub - real impl would use OAuth tokens)
+# Connection state: in-memory after successful OAuth (tokens also returned to backend for DB storage)
 connection_status = {
     'connected': False,
     'account_mode': ACCOUNT_MODE,
     'last_error': None,
 }
+# In-memory tokens for this process (used by /health and future ProtoOA calls until disconnect/restart)
+_stored_tokens: dict = {}
 
 app = FastAPI(
     title="cTrader Service",
@@ -102,7 +106,7 @@ async def root():
 async def health():
     """Health check - aligned with ib_service /health"""
     return {
-        "status": "healthy" if True else "degraded",
+        "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "connection": {
             "ctrader": {
@@ -114,24 +118,116 @@ async def health():
     }
 
 
+async def _exchange_code_for_tokens(
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str,
+    code: str,
+) -> dict:
+    """
+    Exchange OAuth authorization code for access and refresh tokens.
+    Calls GET https://openapi.ctrader.com/apps/token per cTrader Open API docs.
+    """
+    url = f"{CTRADER_TOKEN_BASE}/apps/token"
+    params = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, params=params)
+    data = response.json()
+    if response.status_code != 200:
+        error_code = data.get("errorCode") or response.status_code
+        description = data.get("description") or response.text or "Token exchange failed"
+        raise HTTPException(
+            status_code=400,
+            detail=f"cTrader token exchange failed: {description} (code: {error_code})",
+        )
+    if data.get("errorCode"):
+        raise HTTPException(
+            status_code=400,
+            detail=data.get("description") or f"cTrader error: {data.get('errorCode')}",
+        )
+    return data
+
+
 @app.post("/connection/connect")
 async def connection_connect(req: ConnectRequest):
-    """OAuth code exchange - stub; real impl uses ctrader-open-api"""
-    # TODO: Implement OAuth flow with ctrader-open-api
+    """
+    OAuth code exchange: exchange authorization code for access_token and refresh_token.
+    Returns tokens so the backend can store them in ctrader_connection_profiles (C2).
+    Also sets in-memory connection state for this process.
+    """
     connection_status["connected"] = False
+    connection_status["last_error"] = None
     connection_status["account_mode"] = req.account_mode or "paper"
-    connection_status["last_error"] = "cTrader OAuth not configured - register app at openapi.ctrader.com"
+
+    if not req.auth_code or not req.client_id or not req.client_secret:
+        connection_status["last_error"] = "Missing client_id, client_secret, or auth_code"
+        raise HTTPException(
+            status_code=400,
+            detail="OAuth code exchange requires client_id, client_secret, redirect_uri, and auth_code.",
+        )
+    redirect_uri = (req.redirect_uri or "").strip()
+    if not redirect_uri:
+        connection_status["last_error"] = "redirect_uri is required"
+        raise HTTPException(status_code=400, detail="redirect_uri is required.")
+
+    try:
+        data = await _exchange_code_for_tokens(
+            client_id=req.client_id.strip(),
+            client_secret=req.client_secret,
+            redirect_uri=redirect_uri,
+            code=req.auth_code.strip(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Token exchange failed")
+        connection_status["last_error"] = str(e)
+        raise HTTPException(status_code=502, detail=f"Token exchange failed: {e}")
+
+    access_token = data.get("accessToken")
+    refresh_token = data.get("refreshToken")
+    expires_in = data.get("expiresIn", 2628000)  # default ~30 days in seconds
+    if not access_token:
+        connection_status["last_error"] = "No access token in cTrader response"
+        raise HTTPException(status_code=502, detail="Invalid token response: no accessToken.")
+
+    token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+    # In-memory state for this process (used by /health and future ProtoOA calls)
+    _stored_tokens["access_token"] = access_token
+    _stored_tokens["refresh_token"] = refresh_token
+    _stored_tokens["token_expires_at"] = token_expires_at
+    connection_status["connected"] = True
+    connection_status["last_error"] = None
+
     return {
-        "success": False,
-        "message": "cTrader connection requires OAuth. Configure client_id, client_secret, and complete OAuth flow.",
-        "detail": connection_status["last_error"]
+        "success": True,
+        "message": "Connected; store tokens in profile.",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": expires_in,
+        "token_expires_at": token_expires_at.isoformat(),
+        "connection": {
+            "ctrader": {
+                "connected": True,
+                "account_mode": connection_status["account_mode"],
+                "last_error": None,
+            }
+        },
     }
 
 
 @app.post("/connection/disconnect")
 async def connection_disconnect():
-    """Disconnect - stub"""
+    """Clear in-memory connection and tokens (backend holds tokens in DB)."""
     connection_status["connected"] = False
+    _stored_tokens.clear()
     return {"success": True, "message": "Disconnected"}
 
 
