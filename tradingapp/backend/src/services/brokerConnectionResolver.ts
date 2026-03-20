@@ -173,16 +173,21 @@ class BrokerConnectionResolver {
       case 'CTRADER': {
         const profile = await ctraderConnectionService.getActiveProfile() ?? await ctraderConnectionService.getDefaultProfile();
         if (!profile) return null;
+        const hasToken = !!profile.access_token;
+        const tokenExpired = profile.token_expires_at
+          ? new Date(profile.token_expires_at).getTime() <= Date.now()
+          : false;
         return {
           brokerType: 'CTRADER',
-          connected: !!profile.access_token, // Simplified - real check would validate token
+          connected: hasToken && !tokenExpired,
           profileId: profile.id,
           profileName: profile.name,
           accountMode: profile.account_mode as AccountMode,
-          lastError: profile.last_error ?? undefined,
+          lastError: tokenExpired ? 'Token expired – refresh needed' : (profile.last_error ?? undefined),
           details: {
             clientId: profile.client_id,
-            ctraderAccountId: profile.ctrader_account_id
+            ctraderAccountId: profile.ctrader_account_id,
+            tokenExpired,
           }
         };
       }

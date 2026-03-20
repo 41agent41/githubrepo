@@ -1017,7 +1017,7 @@ export default function ConnectionsPage() {
                     <span className="font-semibold">{p.name}</span>
                     <span className={`ml-2 px-2 py-0.5 text-xs rounded ${p.account_mode === 'live' ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>{p.account_mode}</span>
                     {p.is_default && <span className="ml-2 text-xs text-purple-400">Default</span>}
-                    {p.access_token && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-green-900/50 text-green-300 border border-green-700">Connected</span>}
+                    {p.last_connected_at && <span className="ml-2 px-2 py-0.5 text-xs rounded bg-green-900/50 text-green-300 border border-green-700">Connected</span>}
                     {p.description && <p className="text-gray-400 text-sm mt-1">{p.description}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1030,7 +1030,10 @@ export default function ConnectionsPage() {
                           return;
                         }
                         const redirectUri = encodeURIComponent(p.redirect_uri.trim());
-                        const authUrl = `https://id.ctrader.com/my/settings/openapi/grantingaccess/?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${redirectUri}&scope=trading&product=web&state=${p.id}`;
+                        const nonce = crypto.randomUUID();
+                        const stateValue = `${p.id}:${nonce}`;
+                        sessionStorage.setItem('ctrader_oauth_state', stateValue);
+                        const authUrl = `https://id.ctrader.com/my/settings/openapi/grantingaccess/?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${redirectUri}&scope=trading&product=web&state=${encodeURIComponent(stateValue)}`;
                         window.location.href = authUrl;
                       }}
                       className="px-3 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500 text-cyan-300 rounded text-sm"

@@ -143,21 +143,35 @@ class CTraderConnectionService {
   }
 
   async setActiveProfile(id: number): Promise<void> {
-    await dbService.query(
-      'UPDATE ctrader_connection_profiles SET is_active = FALSE WHERE is_active = TRUE'
+    const check = await dbService.query(
+      'SELECT id FROM ctrader_connection_profiles WHERE id = $1',
+      [id]
     );
+    if (!check.rows.length) {
+      throw new Error(`Profile ${id} not found`);
+    }
     await dbService.query(
-      'UPDATE ctrader_connection_profiles SET is_active = TRUE WHERE id = $1',
+      `UPDATE ctrader_connection_profiles
+       SET is_active = CASE WHEN id = $1 THEN TRUE ELSE FALSE END,
+           updated_at = NOW()
+       WHERE is_active = TRUE OR id = $1`,
       [id]
     );
   }
 
   async setDefaultProfile(id: number): Promise<void> {
-    await dbService.query(
-      'UPDATE ctrader_connection_profiles SET is_default = FALSE WHERE is_default = TRUE'
+    const check = await dbService.query(
+      'SELECT id FROM ctrader_connection_profiles WHERE id = $1',
+      [id]
     );
+    if (!check.rows.length) {
+      throw new Error(`Profile ${id} not found`);
+    }
     await dbService.query(
-      'UPDATE ctrader_connection_profiles SET is_default = TRUE WHERE id = $1',
+      `UPDATE ctrader_connection_profiles
+       SET is_default = CASE WHEN id = $1 THEN TRUE ELSE FALSE END,
+           updated_at = NOW()
+       WHERE is_default = TRUE OR id = $1`,
       [id]
     );
   }

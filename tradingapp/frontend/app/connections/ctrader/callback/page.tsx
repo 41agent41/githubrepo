@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getApiUrl } from '../../../utils/apiConfig';
@@ -10,10 +10,14 @@ function CallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'pending' | 'success' | 'error'>('pending');
   const [message, setMessage] = useState<string>('');
+  const calledRef = useRef(false);
 
   useEffect(() => {
+    if (calledRef.current) return;
+    calledRef.current = true;
+
     const code = searchParams.get('code');
-    const state = searchParams.get('state'); // profile id
+    const state = searchParams.get('state');
 
     if (!code) {
       setStatus('error');
@@ -26,18 +30,28 @@ function CallbackContent() {
       return;
     }
 
-    const profileId = parseInt(state, 10);
+    const savedState = sessionStorage.getItem('ctrader_oauth_state');
+    if (savedState && savedState !== state) {
+      setStatus('error');
+      setMessage('OAuth state mismatch – possible CSRF. Please try connecting again.');
+      return;
+    }
+    sessionStorage.removeItem('ctrader_oauth_state');
+
+    const profileId = parseInt(state.split(':')[0], 10);
     if (Number.isNaN(profileId)) {
       setStatus('error');
       setMessage('Invalid profile.');
       return;
     }
 
+    const controller = new AbortController();
     const apiUrl = getApiUrl();
     fetch(`${apiUrl}/api/ctrader-connections/profiles/${profileId}/oauth-callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code })
+      body: JSON.stringify({ code }),
+      signal: controller.signal,
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -49,10 +63,13 @@ function CallbackContent() {
           setMessage(data.message || data.error || 'Failed to complete connection.');
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
         setStatus('error');
         setMessage('Network error. Is the backend running?');
       });
+
+    return () => controller.abort();
   }, [searchParams]);
 
   return (

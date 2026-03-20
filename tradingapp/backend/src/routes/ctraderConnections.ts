@@ -13,9 +13,9 @@ import { getBrokerServiceUrl } from '../config/runtimeConfig.js';
 
 const router = express.Router();
 
-/** Omit client_secret_encrypted from profile when sending to client */
-function toSafeProfile<T extends { client_secret_encrypted?: string | null }>(p: T): Omit<T, 'client_secret_encrypted'> {
-  const { client_secret_encrypted: _, ...rest } = p;
+/** Strip sensitive fields before sending to client */
+function toSafeProfile<T extends Record<string, any>>(p: T): Omit<T, 'client_secret_encrypted' | 'access_token' | 'refresh_token'> {
+  const { client_secret_encrypted: _a, access_token: _b, refresh_token: _c, ...rest } = p;
   return rest;
 }
 

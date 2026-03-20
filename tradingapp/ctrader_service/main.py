@@ -8,12 +8,12 @@ OAuth code exchange (C1) implemented; token storage is returned to backend for D
 import os
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Any
+from typing import Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(
@@ -124,6 +124,14 @@ async def health():
     }
 
 
+def _safe_json(response) -> dict:
+    """Parse JSON from httpx response, returning empty dict on parse failure."""
+    try:
+        return response.json()
+    except Exception:
+        return {}
+
+
 async def _exchange_code_for_tokens(
     client_id: str,
     client_secret: str,
@@ -144,14 +152,15 @@ async def _exchange_code_for_tokens(
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.get(url, params=params)
-    data = response.json()
     if response.status_code != 200:
+        data = _safe_json(response)
         error_code = data.get("errorCode") or response.status_code
         description = data.get("description") or response.text or "Token exchange failed"
         raise HTTPException(
             status_code=400,
             detail=f"cTrader token exchange failed: {description} (code: {error_code})",
         )
+    data = _safe_json(response)
     if data.get("errorCode"):
         raise HTTPException(
             status_code=400,
@@ -178,14 +187,15 @@ async def _refresh_tokens(
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.get(url, params=params)
-    data = response.json()
     if response.status_code != 200:
+        data = _safe_json(response)
         error_code = data.get("errorCode") or response.status_code
         description = data.get("description") or response.text or "Token refresh failed"
         raise HTTPException(
             status_code=400,
             detail=f"cTrader token refresh failed: {description} (code: {error_code})",
         )
+    data = _safe_json(response)
     if data.get("errorCode"):
         raise HTTPException(
             status_code=400,
@@ -365,6 +375,42 @@ def _stub_account_response():
     }
 
 
+def _normalize_symbol(s: str) -> str:
+    return s.replace("/", "").replace(".", "").replace("#", "").upper()
+
+
+def _resolve_symbol_id(symbols: list, raw_symbol: str) -> Optional[int]:
+    """Resolve a symbol string to a cTrader symbolId with strict matching."""
+    target = _normalize_symbol(raw_symbol)
+    if not target:
+        return None
+    # 1. Exact name match
+    for s in symbols:
+        if _normalize_symbol(s.get("name", "")) == target:
+            return s["symbol_id"]
+    # 2. Exact display_name match
+    for s in symbols:
+        if _normalize_symbol(s.get("display_name", "")) == target:
+            return s["symbol_id"]
+    # 3. Starts-with (target is a prefix of the broker name, e.g. "AAPL" matches "AAPL.US")
+    for s in symbols:
+        name = _normalize_symbol(s.get("name", ""))
+        if name.startswith(target):
+            return s["symbol_id"]
+    return None
+
+
+async def _fetch_symbols_cached(cred: dict) -> list:
+    """Fetch symbols list (future: add TTL cache)."""
+    import asyncio
+    from protooa_client import fetch_symbols_list
+    return await asyncio.to_thread(
+        fetch_symbols_list,
+        cred["client_id"], cred["client_secret"], cred["access_token"],
+        cred["ctid_trader_account_id"], cred["account_mode"],
+    )
+
+
 @app.get("/account/summary")
 async def account_summary(request: Request):
     """
@@ -398,17 +444,13 @@ async def account_summary(request: Request):
 async def account_positions(request: Request):
     """C5: Positions via ProtoOAReconcileReq. Pass credentials via headers."""
     import asyncio
-    from protooa_client import fetch_positions, fetch_symbols_list
+    from protooa_client import fetch_positions
 
     cred = _get_credentials_from_request(request)
     if not cred:
         return []
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
+        symbols = await _fetch_symbols_cached(cred)
         sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
         positions = await asyncio.to_thread(
             fetch_positions,
@@ -440,17 +482,13 @@ def _position_to_ib_format(p: dict) -> dict:
 async def account_orders(request: Request):
     """C6: Orders via ProtoOAReconcileReq. Pass credentials via headers."""
     import asyncio
-    from protooa_client import fetch_orders, fetch_symbols_list
+    from protooa_client import fetch_orders
 
     cred = _get_credentials_from_request(request)
     if not cred:
         return []
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
+        symbols = await _fetch_symbols_cached(cred)
         sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
         orders = await asyncio.to_thread(
             fetch_orders,
@@ -472,8 +510,8 @@ def _order_to_ib_format(o: dict) -> dict:
         "symbol": o.get("symbol", ""),
         "action": side,
         "quantity": o.get("volume", 0),
-        "order_type": "Market",
-        "status": "Pending",
+        "order_type": o.get("order_type_name", "Market"),
+        "status": o.get("status_name", "Pending"),
         "filled_quantity": 0,
         "remaining_quantity": o.get("volume", 0),
     }
@@ -481,15 +519,43 @@ def _order_to_ib_format(o: dict) -> dict:
 
 @app.get("/account/all")
 async def account_all(request: Request):
-    """All account data in one call"""
-    summary = await account_summary(request)
-    positions = await account_positions(request)
-    orders = await account_orders(request)
-    return {
-        "account": summary,
-        "positions": positions,
-        "orders": orders
-    }
+    """All account data – summary + single reconcile for positions & orders."""
+    import asyncio
+    from protooa_client import fetch_account_summary, fetch_reconcile
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        return {
+            "account": _stub_account_response(),
+            "positions": [],
+            "orders": [],
+        }
+    try:
+        symbols = await _fetch_symbols_cached(cred)
+        sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
+
+        summary_data, recon_data = await asyncio.gather(
+            asyncio.to_thread(
+                fetch_account_summary,
+                cred["client_id"], cred["client_secret"], cred["access_token"],
+                cred["ctid_trader_account_id"], cred["account_mode"],
+            ),
+            asyncio.to_thread(
+                fetch_reconcile,
+                cred["client_id"], cred["client_secret"], cred["access_token"],
+                cred["ctid_trader_account_id"], cred["account_mode"],
+                symbol_id_to_name=sid_to_name,
+            ),
+        )
+        summary_data["last_updated"] = datetime.now(timezone.utc).isoformat()
+        return {
+            "account": summary_data,
+            "positions": [_position_to_ib_format(p) for p in recon_data.get("positions", [])],
+            "orders": [_order_to_ib_format(o) for o in recon_data.get("orders", [])],
+        }
+    except Exception as e:
+        logger.exception("ProtoOA account/all failed")
+        raise HTTPException(status_code=502, detail=f"Account data fetch failed: {e}")
 
 
 # =============================================================================
@@ -500,26 +566,16 @@ async def account_all(request: Request):
 async def orders_place(request: Request, req: PlaceOrderRequest):
     """C6: Place order via ProtoOANewOrderReq. Pass credentials via headers."""
     import asyncio
-    from protooa_client import fetch_symbols_list, place_order
+    from protooa_client import place_order
 
     cred = _get_credentials_from_request(request)
     if not cred:
         raise HTTPException(status_code=401, detail="Credentials required (X-Access-Token, X-Client-Id, X-Client-Secret)")
-    sym_clean = (req.symbol or "").replace(".", "").replace("/", "").replace("#", "").upper()
-    if not sym_clean:
+    if not (req.symbol or "").strip():
         raise HTTPException(status_code=400, detail="symbol is required")
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
-        symbol_id = None
-        for s in symbols:
-            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
-            if name == sym_clean or sym_clean in name or name in sym_clean:
-                symbol_id = s["symbol_id"]
-                break
+        symbols = await _fetch_symbols_cached(cred)
+        symbol_id = _resolve_symbol_id(symbols, req.symbol)
         if symbol_id is None:
             raise HTTPException(status_code=404, detail=f"Symbol not found: {req.symbol}")
         result = await asyncio.to_thread(
@@ -597,24 +653,14 @@ async def market_data_history(
 ):
     """C7: Historical OHLCV via ProtoOAGetTrendbarsReq. Pass credentials via headers."""
     import asyncio
-    from protooa_client import fetch_symbols_list, fetch_trendbars
+    from protooa_client import fetch_trendbars
 
     cred = _get_credentials_from_request(request)
     if not cred:
         return {"symbol": symbol, "timeframe": timeframe, "bars": [], "data": [], "count": 0}
-    sym_clean = symbol.replace(".", "").replace("/", "").replace("#", "").upper()
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
-        symbol_id = None
-        for s in symbols:
-            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
-            if name == sym_clean or sym_clean in name or name in sym_clean:
-                symbol_id = s["symbol_id"]
-                break
+        symbols = await _fetch_symbols_cached(cred)
+        symbol_id = _resolve_symbol_id(symbols, symbol)
         if symbol_id is None:
             return {"symbol": symbol, "timeframe": timeframe, "bars": [], "data": [], "count": 0}
         to_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -637,7 +683,6 @@ async def market_data_history(
             timeframe=timeframe,
             from_timestamp_ms=from_ts,
             to_timestamp_ms=to_ts,
-            count=500,
         )
         return {
             "symbol": symbol,
@@ -657,24 +702,14 @@ async def market_data_history(
 async def market_data_realtime(request: Request, symbol: str, account_mode: str = "paper"):
     """C8: Real-time quote via ProtoOASubscribeSpotsReq. Pass credentials via headers."""
     import asyncio
-    from protooa_client import fetch_symbols_list, fetch_spot
+    from protooa_client import fetch_spot
 
     cred = _get_credentials_from_request(request)
     if not cred:
         return {"symbol": symbol, "bid": None, "ask": None, "last": None, "volume": None}
-    sym_clean = symbol.replace(".", "").replace("/", "").replace("#", "").upper()
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
-        symbol_id = None
-        for s in symbols:
-            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
-            if name == sym_clean or sym_clean in name or name in sym_clean:
-                symbol_id = s["symbol_id"]
-                break
+        symbols = await _fetch_symbols_cached(cred)
+        symbol_id = _resolve_symbol_id(symbols, symbol)
         if symbol_id is None:
             return {"symbol": symbol, "bid": None, "ask": None, "last": None, "volume": None}
         spot = await asyncio.to_thread(
@@ -705,23 +740,16 @@ async def market_data_realtime(request: Request, symbol: str, account_mode: str 
 @app.post("/contract/search")
 async def contract_search(request: Request, req: SearchRequest):
     """C9: Symbol search via ProtoOASymbolsListReq. Pass credentials via headers."""
-    import asyncio
-    from protooa_client import fetch_symbols_list
-
     cred = _get_credentials_from_request(request)
     if not cred:
         return {"results": []}
     try:
-        symbols = await asyncio.to_thread(
-            fetch_symbols_list,
-            cred["client_id"], cred["client_secret"], cred["access_token"],
-            cred["ctid_trader_account_id"], cred["account_mode"],
-        )
-        query = (req.symbol or "").upper().strip()
+        symbols = await _fetch_symbols_cached(cred)
+        query = _normalize_symbol(req.symbol or "")
         results = []
         for s in symbols:
-            name = (s.get("name") or "").upper()
-            if not query or query in name or name in query:
+            name_norm = _normalize_symbol(s.get("name", ""))
+            if not query or query in name_norm or name_norm.startswith(query):
                 results.append({
                     "symbol": s.get("name", ""),
                     "symbolId": s["symbol_id"],

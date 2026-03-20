@@ -531,12 +531,12 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   private mapOrderTypeToCTrader(orderType: string): string {
     const mapping: Record<string, string> = {
-      'MARKET': 'Market',
-      'LIMIT': 'Limit',
-      'STOP': 'Stop',
-      'STOP_LIMIT': 'Stop limit'
+      'MARKET': 'MARKET',
+      'LIMIT': 'LIMIT',
+      'STOP': 'STOP',
+      'STOP_LIMIT': 'STOP_LIMIT'
     };
-    return mapping[orderType] || 'Market';
+    return mapping[orderType] || 'MARKET';
   }
 
   private mapCTraderOrderTypeToInternal(ctraderOrderType: string): string {
@@ -574,9 +574,9 @@ export class CTraderBrokerService extends BaseBrokerService {
       quantity: parseFloat(order.quantity ?? order.totalQuantity ?? 0),
       filledQuantity: parseFloat(order.filled_quantity ?? order.filledQuantity ?? 0),
       remainingQuantity: parseFloat(order.remaining_quantity ?? order.remaining ?? order.quantity ?? 0),
-      limitPrice: order.limit_price ?? order.lmtPrice ? parseFloat(order.limit_price ?? order.lmtPrice) : undefined,
-      stopPrice: order.stop_price ?? order.auxPrice ? parseFloat(order.stop_price ?? order.auxPrice) : undefined,
-      averageFillPrice: order.avg_fill_price ?? order.avgFillPrice ? parseFloat(order.avg_fill_price ?? order.avgFillPrice) : undefined,
+      limitPrice: (order.limit_price ?? order.lmtPrice) != null ? parseFloat(order.limit_price ?? order.lmtPrice) : undefined,
+      stopPrice: (order.stop_price ?? order.auxPrice) != null ? parseFloat(order.stop_price ?? order.auxPrice) : undefined,
+      averageFillPrice: (order.avg_fill_price ?? order.avgFillPrice) != null ? parseFloat(order.avg_fill_price ?? order.avgFillPrice) : undefined,
       status: this.mapCTraderStatusToInternal(order.status || 'Pending'),
       statusMessage: order.status_message,
       timeInForce: order.time_in_force ?? order.tif ?? 'GTC',
