@@ -322,6 +322,10 @@ export interface BrokerConnectionConfig {
   port?: number;
   /** IB uses numeric client ID; cTrader OAuth uses string client ID */
   clientId?: number | string;
+  /** cTrader OAuth client secret */
+  clientSecret?: string;
+  /** cTrader OAuth redirect URI */
+  redirectUri?: string;
   
   // Timeouts
   timeoutSeconds?: number;
