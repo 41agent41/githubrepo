@@ -3,9 +3,12 @@
  *
  * CRUD for cTrader connection profiles (OAuth-based).
  * Used by BrokerConnectionResolver for CTRADER broker type.
+ * C3: Token refresh (on-demand and background).
  */
 
+import axios from 'axios';
 import { dbService } from './database.js';
+import { getBrokerServiceUrl } from '../config/runtimeConfig.js';
 
 export interface CTraderConnectionProfile {
   id?: number;
@@ -157,6 +160,82 @@ class CTraderConnectionService {
       'UPDATE ctrader_connection_profiles SET is_default = TRUE WHERE id = $1',
       [id]
     );
+  }
+
+  /**
+   * C3: Refresh tokens for a profile. Calls ctrader_service /connection/refresh
+   * and updates the profile in DB. Returns updated profile or null on failure.
+   */
+  async refreshTokens(id: number): Promise<CTraderConnectionProfile | null> {
+    const profile = await this.getProfileById(id);
+    if (!profile) return null;
+    if (!profile.refresh_token || !profile.client_secret_encrypted) {
+      return null;
+    }
+
+    const ctraderServiceUrl = getBrokerServiceUrl('CTRADER');
+    try {
+      const response = await axios.post(
+        `${ctraderServiceUrl}/connection/refresh`,
+        {
+          client_id: profile.client_id,
+          client_secret: profile.client_secret_encrypted,
+          refresh_token: profile.refresh_token
+        },
+        { timeout: 15000 }
+      );
+
+      const data = response.data;
+      if (!data?.success || !data.access_token) {
+        await this.updateProfile(id, {
+          last_error: data?.detail || data?.message || 'Token refresh failed'
+        });
+        return null;
+      }
+
+      const tokenExpiresAt = data.token_expires_at
+        ? new Date(data.token_expires_at)
+        : undefined;
+
+      await this.updateProfile(id, {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token ?? profile.refresh_token,
+        token_expires_at: tokenExpiresAt,
+        last_connected_at: new Date(),
+        last_error: null
+      });
+
+      return this.getProfileById(id);
+    } catch (error: any) {
+      const message = error.response?.data?.detail || error.response?.data?.message || error.message;
+      await this.updateProfile(id, {
+        last_error: message
+      });
+      return null;
+    }
+  }
+
+  /**
+   * C3: Refresh tokens if expired or within bufferMinutes of expiry.
+   * Returns updated profile (or original if no refresh needed).
+   */
+  async refreshTokensIfNeeded(
+    profile: CTraderConnectionProfile,
+    bufferMinutes: number = 5
+  ): Promise<CTraderConnectionProfile> {
+    if (!profile.token_expires_at || !profile.refresh_token || !profile.client_secret_encrypted) {
+      return profile;
+    }
+
+    const bufferMs = bufferMinutes * 60 * 1000;
+    const now = Date.now();
+    const expiresAt = profile.token_expires_at.getTime();
+    if (expiresAt - now > bufferMs) {
+      return profile; // Token still valid
+    }
+
+    const refreshed = await this.refreshTokens(profile.id!);
+    return refreshed ?? profile;
   }
 }
 

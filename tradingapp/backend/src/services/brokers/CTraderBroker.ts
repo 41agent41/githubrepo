@@ -7,6 +7,7 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { BaseBrokerService } from './IBrokerService.js';
+import { brokerConnectionResolver } from '../brokerConnectionResolver.js';
 import {
   BrokerType,
   BrokerAccountSummary,
@@ -28,6 +29,10 @@ import {
   BrokerOrderError
 } from '../../types/broker.js';
 import { getBrokerServiceUrl } from '../../config/runtimeConfig.js';
+import {
+  toBrokerSymbol as configToBrokerSymbol,
+  toCanonicalSymbol as configToCanonicalSymbol
+} from '../../config/ctraderSymbolMap.js';
 
 /**
  * cTrader-specific configuration (OAuth tokens, etc.)
@@ -165,9 +170,35 @@ export class CTraderBrokerService extends BaseBrokerService {
   // Account Operations
   // ============================================================================
 
+  private async getCredentialHeaders(): Promise<Record<string, string>> {
+    const connection = await brokerConnectionResolver.getActiveConnection('CTRADER');
+    if (!connection?.config?.settings?.accessToken) {
+      throw new BrokerConnectionError(
+        'No cTrader connection configured. Add a profile and complete OAuth.',
+        'CTRADER',
+        'NO_CONNECTION'
+      );
+    }
+    const s = connection.config.settings as Record<string, unknown>;
+    const headers: Record<string, string> = {
+      'X-Access-Token': String(s.accessToken),
+      'X-Client-Id': String(s.clientId ?? connection.config.clientId),
+      'X-Client-Secret': String(s.clientSecret ?? connection.config.clientSecret),
+      'X-Account-Mode': (connection.config.accountMode ?? this.currentAccountMode) as string
+    };
+    if (s.ctraderAccountId != null) {
+      headers['X-Ctid-Trader-Account-Id'] = String(s.ctraderAccountId);
+    }
+    return headers;
+  }
+
   async getAccountSummary(): Promise<BrokerAccountSummary> {
     try {
-      const response = await this.httpClient.get('/account/summary', { timeout: 20000 });
+      const headers = await this.getCredentialHeaders();
+      const response = await this.httpClient.get('/account/summary', {
+        headers,
+        timeout: 30000
+      });
       const data = response.data;
 
       return {
@@ -193,7 +224,11 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async getPositions(): Promise<BrokerPosition[]> {
     try {
-      const response = await this.httpClient.get('/account/positions', { timeout: 20000 });
+      const headers = await this.getCredentialHeaders();
+      const response = await this.httpClient.get('/account/positions', {
+        headers,
+        timeout: 30000
+      });
       const positions = Array.isArray(response.data) ? response.data : response.data?.positions || [];
 
       return positions.map((pos: any) => ({
@@ -218,7 +253,11 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async getOrders(): Promise<BrokerOrder[]> {
     try {
-      const response = await this.httpClient.get('/account/orders', { timeout: 20000 });
+      const headers = await this.getCredentialHeaders();
+      const response = await this.httpClient.get('/account/orders', {
+        headers,
+        timeout: 30000
+      });
       const orders = Array.isArray(response.data) ? response.data : response.data?.orders || [];
 
       return orders.map((order: any) => this.mapCTraderOrderToBrokerOrder(order));
@@ -233,6 +272,7 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async placeOrder(orderRequest: BrokerOrderRequest): Promise<BrokerOrder> {
     try {
+      const headers = await this.getCredentialHeaders();
       const ctraderOrderType = this.mapOrderTypeToCTrader(orderRequest.orderType);
 
       const response = await this.httpClient.post('/orders/place', {
@@ -248,14 +288,15 @@ export class CTraderBrokerService extends BaseBrokerService {
           : undefined,
         time_in_force: orderRequest.timeInForce || 'GTC'
       }, {
+        headers,
         timeout: 30000
       });
 
-      const ctraderOrder = response.data;
+      const data = response.data;
 
       return {
         id: 0,
-        brokerOrderId: String(ctraderOrder.order_id ?? ctraderOrder.orderId),
+        brokerOrderId: String(data.order_id ?? data.orderId ?? 0),
         brokerType: 'CTRADER',
         symbol: orderRequest.symbol,
         brokerSymbol: this.toBrokerSymbol(orderRequest.symbol),
@@ -287,9 +328,11 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async cancelOrder(orderId: string): Promise<boolean> {
     try {
+      const headers = await this.getCredentialHeaders();
       await this.httpClient.post('/orders/cancel', {
         order_id: parseInt(orderId, 10)
       }, {
+        headers,
         timeout: 10000
       });
       return true;
@@ -319,6 +362,7 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async searchContracts(params: ContractSearchParams): Promise<BrokerContract[]> {
     try {
+      const headers = await this.getCredentialHeaders();
       const response = await this.httpClient.post('/contract/search', {
         symbol: params.symbol,
         secType: params.securityType,
@@ -326,13 +370,14 @@ export class CTraderBrokerService extends BaseBrokerService {
         currency: params.currency,
         name: params.searchByName
       }, {
+        headers,
         timeout: 30000
       });
 
       const results = response.data?.results || [];
 
       return results.map((contract: any) => ({
-        symbol: this.toCanonicalSymbol(contract.symbol),
+        symbol: this.toCanonicalSymbol(contract.symbol ?? contract.symbolId),
         brokerSymbol: contract.symbol,
         securityType: contract.secType ?? 'CASH',
         exchange: contract.exchange,
@@ -352,6 +397,7 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async searchContractsAdvanced(params: AdvancedContractSearchParams): Promise<BrokerContract[]> {
     try {
+      const headers = await this.getCredentialHeaders();
       const response = await this.httpClient.post('/contract/advanced-search', {
         symbol: params.symbol,
         secType: params.securityType,
@@ -364,13 +410,14 @@ export class CTraderBrokerService extends BaseBrokerService {
         includeExpired: params.includeExpired,
         name: params.searchByName
       }, {
+        headers,
         timeout: 30000
       });
 
       const results = response.data?.results || [];
 
       return results.map((contract: any) => ({
-        symbol: this.toCanonicalSymbol(contract.symbol),
+        symbol: this.toCanonicalSymbol(contract.symbol ?? contract.symbolId),
         brokerSymbol: contract.symbol,
         securityType: contract.secType ?? 'CASH',
         exchange: contract.exchange,
@@ -390,7 +437,9 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async getHistoricalData(params: HistoricalDataParams): Promise<HistoricalDataResponse> {
     try {
+      const headers = await this.getCredentialHeaders();
       const response = await this.httpClient.get('/market-data/history', {
+        headers,
         params: {
           symbol: this.toBrokerSymbol(params.symbol),
           timeframe: params.timeframe,
@@ -407,7 +456,7 @@ export class CTraderBrokerService extends BaseBrokerService {
 
       const rawBars = response.data?.bars ?? response.data?.data ?? [];
       const bars: CandlestickBar[] = rawBars.map((bar: any) => ({
-        timestamp: new Date((bar.timestamp || bar.time) * 1000),
+        timestamp: new Date(bar.timestamp && bar.timestamp > 1e12 ? bar.timestamp : (bar.timestamp || bar.time || 0) * 1000),
         open: parseFloat(bar.open),
         high: parseFloat(bar.high),
         low: parseFloat(bar.low),
@@ -430,12 +479,14 @@ export class CTraderBrokerService extends BaseBrokerService {
 
   async getQuote(symbol: string): Promise<BrokerQuote> {
     try {
+      const headers = await this.getCredentialHeaders();
       const response = await this.httpClient.get('/market-data/realtime', {
+        headers,
         params: {
           symbol: this.toBrokerSymbol(symbol),
           account_mode: this.currentAccountMode
         },
-        timeout: 10000
+        timeout: 15000
       });
 
       const data = response.data;
@@ -463,31 +514,15 @@ export class CTraderBrokerService extends BaseBrokerService {
   }
 
   // ============================================================================
-  // Symbol Mapping (cTrader: EURUSD, #AAPL vs IB: EUR.USD, AAPL)
+  // Symbol Mapping (C10: config + fallbacks for forex, CFDs, indices)
   // ============================================================================
 
   toBrokerSymbol(canonicalSymbol: string): string {
-    // Forex: EUR/USD -> EURUSD
-    if (canonicalSymbol.includes('/')) {
-      return canonicalSymbol.replace('/', '');
-    }
-    // Stocks/CFDs: AAPL -> #AAPL (cTrader CFD convention)
-    if (!canonicalSymbol.startsWith('#')) {
-      return `#${canonicalSymbol}`;
-    }
-    return canonicalSymbol;
+    return configToBrokerSymbol(canonicalSymbol);
   }
 
   toCanonicalSymbol(brokerSymbol: string): string {
-    // Remove # prefix for CFDs
-    if (brokerSymbol.startsWith('#')) {
-      return brokerSymbol.slice(1);
-    }
-    // Forex: EURUSD -> EUR/USD
-    if (brokerSymbol.length === 6 && brokerSymbol.slice(3) === 'USD') {
-      return `${brokerSymbol.slice(0, 3)}/USD`;
-    }
-    return brokerSymbol;
+    return configToCanonicalSymbol(brokerSymbol);
   }
 
   // ============================================================================

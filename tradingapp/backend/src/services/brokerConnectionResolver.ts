@@ -125,17 +125,15 @@ class BrokerConnectionResolver {
         };
       }
       case 'CTRADER': {
-        const profile = await ctraderConnectionService.getActiveProfile();
+        let profile = await ctraderConnectionService.getActiveProfile();
         if (!profile) {
-          const defaultProfile = await ctraderConnectionService.getDefaultProfile();
-          if (!defaultProfile) return null;
-          return {
-            profileId: defaultProfile.id!,
-            profileName: defaultProfile.name,
-            config: mapCTraderProfileToConfig(defaultProfile),
-            rawProfile: defaultProfile
-          };
+          profile = await ctraderConnectionService.getDefaultProfile();
         }
+        if (!profile) return null;
+
+        // C3: Refresh tokens if expired or within 5 minutes of expiry
+        profile = await ctraderConnectionService.refreshTokensIfNeeded(profile, 5);
+
         return {
           profileId: profile.id!,
           profileName: profile.name,
@@ -210,7 +208,9 @@ class BrokerConnectionResolver {
       }
       case 'CTRADER': {
         const profile = await ctraderConnectionService.getProfileById(profileId);
-        return profile ? mapCTraderProfileToConfig(profile) : null;
+        if (!profile) return null;
+        const refreshed = await ctraderConnectionService.refreshTokensIfNeeded(profile, 5);
+        return mapCTraderProfileToConfig(refreshed);
       }
       default:
         return null;

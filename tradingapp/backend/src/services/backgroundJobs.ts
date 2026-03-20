@@ -2,6 +2,7 @@ import { marketDataCollector } from './marketDataCollector.js';
 import { strategyService } from './strategyService.js';
 import { tradingSetupService } from './tradingSetupService.js';
 import { ibConnectionService } from './ibConnectionService.js';
+import { ctraderConnectionService } from './ctraderConnectionService.js';
 
 // Simple in-memory job scheduler
 // In production, consider using node-cron or a proper job queue
@@ -9,9 +10,12 @@ import { ibConnectionService } from './ibConnectionService.js';
 let dataCollectionInterval: NodeJS.Timeout | null = null;
 let strategyCalculationInterval: NodeJS.Timeout | null = null;
 let keepAliveInterval: NodeJS.Timeout | null = null;
+let ctraderTokenRefreshInterval: NodeJS.Timeout | null = null;
 
 // Default keep-alive interval (15 minutes in milliseconds)
 const DEFAULT_KEEP_ALIVE_INTERVAL_MS = 15 * 60 * 1000;
+// C3: cTrader token refresh - run every hour
+const CTRADER_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 export const backgroundJobs = {
   /**
@@ -175,12 +179,77 @@ export const backgroundJobs = {
   },
 
   /**
+   * C3: Start cTrader token refresh job.
+   * Refreshes tokens for profiles expiring within 24 hours (runs every hour).
+   */
+  startCTraderTokenRefresh(): void {
+    if (ctraderTokenRefreshInterval) {
+      console.log('cTrader token refresh job already running');
+      return;
+    }
+
+    console.log('Starting cTrader token refresh job...');
+
+    const runRefresh = () => {
+      this.runCTraderTokenRefresh();
+    };
+
+    // Run first refresh after 2 minutes (allow services to start)
+    setTimeout(runRefresh, 2 * 60 * 1000);
+
+    ctraderTokenRefreshInterval = setInterval(runRefresh, CTRADER_REFRESH_INTERVAL_MS);
+
+    console.log(`cTrader token refresh job started (runs every ${CTRADER_REFRESH_INTERVAL_MS / 60000} minutes)`);
+  },
+
+  /**
+   * Stop cTrader token refresh job
+   */
+  stopCTraderTokenRefresh(): void {
+    if (ctraderTokenRefreshInterval) {
+      clearInterval(ctraderTokenRefreshInterval);
+      ctraderTokenRefreshInterval = null;
+      console.log('cTrader token refresh job stopped');
+    }
+  },
+
+  /**
+   * C3: Refresh cTrader tokens for profiles expiring within 24 hours
+   */
+  async runCTraderTokenRefresh(): Promise<void> {
+    try {
+      const profiles = await ctraderConnectionService.getAllProfiles();
+      const bufferHours = 24;
+      const bufferMs = bufferHours * 60 * 60 * 1000;
+      const now = Date.now();
+
+      for (const profile of profiles) {
+        if (!profile.refresh_token || !profile.client_secret_encrypted || !profile.token_expires_at) {
+          continue;
+        }
+        const expiresAt = new Date(profile.token_expires_at).getTime();
+        if (expiresAt - now <= bufferMs) {
+          const refreshed = await ctraderConnectionService.refreshTokens(profile.id!);
+          if (refreshed) {
+            console.log(`[cTrader Refresh] Tokens refreshed for profile: ${profile.name}`);
+          } else {
+            console.warn(`[cTrader Refresh] Failed to refresh tokens for profile: ${profile.name}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[cTrader Refresh] Error running token refresh:', error);
+    }
+  },
+
+  /**
    * Start all background jobs
    */
   startAll(): void {
     this.startDataCollection();
     this.startStrategyCalculation();
     this.startKeepAlive();
+    this.startCTraderTokenRefresh();
     console.log('All background jobs started');
   },
 
@@ -191,6 +260,7 @@ export const backgroundJobs = {
     this.stopDataCollection();
     this.stopStrategyCalculation();
     this.stopKeepAlive();
+    this.stopCTraderTokenRefresh();
     console.log('All background jobs stopped');
   }
 };

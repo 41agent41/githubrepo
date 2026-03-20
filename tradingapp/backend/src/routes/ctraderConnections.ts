@@ -185,6 +185,37 @@ router.post('/profiles/:id/activate', async (req: Request, res: Response) => {
   }
 });
 
+// C3: Manual token refresh
+router.post('/profiles/:id/refresh', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid profile ID' });
+
+    const profile = await ctraderConnectionService.refreshTokens(id);
+    if (!profile) {
+      return res.status(400).json({
+        error: 'Token refresh failed',
+        message: 'Profile not found, or missing refresh_token/client_secret. Check profile configuration.',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Tokens refreshed',
+      profile: toSafeProfile(profile),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error refreshing cTrader tokens:', error);
+    res.status(500).json({
+      error: 'Failed to refresh tokens',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Set default profile
 router.post('/profiles/:id/set-default', async (req: Request, res: Response) => {
   try {

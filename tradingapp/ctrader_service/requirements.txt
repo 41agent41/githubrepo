@@ -4,8 +4,8 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.2
 python-multipart==0.0.6
 
-# cTrader Open API (optional - for full integration; stub works without it)
-# ctrader-open-api>=0.9.2
+# cTrader Open API (C4: real account data via ProtoOA)
+ctrader-open-api>=0.9.2
 
 # HTTP client for OAuth/token refresh
 httpx>=0.25.0

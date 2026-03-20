@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -82,6 +82,12 @@ class SearchRequest(BaseModel):
     name: Optional[bool] = False
 
 
+class RefreshRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    refresh_token: str
+
+
 # =============================================================================
 # Health & Connection
 # =============================================================================
@@ -145,6 +151,40 @@ async def _exchange_code_for_tokens(
         raise HTTPException(
             status_code=400,
             detail=f"cTrader token exchange failed: {description} (code: {error_code})",
+        )
+    if data.get("errorCode"):
+        raise HTTPException(
+            status_code=400,
+            detail=data.get("description") or f"cTrader error: {data.get('errorCode')}",
+        )
+    return data
+
+
+async def _refresh_tokens(
+    client_id: str,
+    client_secret: str,
+    refresh_token: str,
+) -> dict:
+    """
+    Refresh access token using refresh_token.
+    Calls GET https://openapi.ctrader.com/apps/token with grant_type=refresh_token.
+    """
+    url = f"{CTRADER_TOKEN_BASE}/apps/token"
+    params = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, params=params)
+    data = response.json()
+    if response.status_code != 200:
+        error_code = data.get("errorCode") or response.status_code
+        description = data.get("description") or response.text or "Token refresh failed"
+        raise HTTPException(
+            status_code=400,
+            detail=f"cTrader token refresh failed: {description} (code: {error_code})",
         )
     if data.get("errorCode"):
         raise HTTPException(
@@ -231,6 +271,51 @@ async def connection_disconnect():
     return {"success": True, "message": "Disconnected"}
 
 
+@app.post("/connection/refresh")
+async def connection_refresh(req: RefreshRequest):
+    """
+    C3: Refresh access token using refresh_token.
+    Returns new tokens for backend to store in ctrader_connection_profiles.
+    """
+    if not req.refresh_token or not req.client_id or not req.client_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="refresh_token, client_id, and client_secret are required.",
+        )
+
+    try:
+        data = await _refresh_tokens(
+            client_id=req.client_id.strip(),
+            client_secret=req.client_secret,
+            refresh_token=req.refresh_token.strip(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Token refresh failed")
+        raise HTTPException(status_code=502, detail=f"Token refresh failed: {e}")
+
+    access_token = data.get("accessToken")
+    refresh_token = data.get("refreshToken")
+    expires_in = data.get("expiresIn", 2628000)
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Invalid token response: no accessToken.")
+
+    token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+    # Backend stores tokens in DB; we do not update in-memory state here
+    # (refresh may be for a different profile than the one in memory)
+
+    return {
+        "success": True,
+        "message": "Tokens refreshed; store in profile.",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": expires_in,
+        "token_expires_at": token_expires_at.isoformat(),
+    }
+
+
 @app.get("/connection/status")
 async def connection_status_endpoint():
     return {
@@ -241,54 +326,165 @@ async def connection_status_endpoint():
 
 
 # =============================================================================
-# Account (stub - returns mock data when not connected)
+# Account (C4: real ProtoOA implementation)
 # =============================================================================
 
+def _get_credentials_from_request(request: Request) -> dict:
+    """Extract ProtoOA credentials from request headers. Returns dict or empty if missing."""
+    access_token = request.headers.get("x-access-token") or request.headers.get("X-Access-Token")
+    client_id = request.headers.get("x-client-id") or request.headers.get("X-Client-Id")
+    client_secret = request.headers.get("x-client-secret") or request.headers.get("X-Client-Secret")
+    ctid_raw = request.headers.get("x-ctid-trader-account-id") or request.headers.get("X-Ctid-Trader-Account-Id")
+    ctid_trader_account_id = int(ctid_raw) if ctid_raw and str(ctid_raw).isdigit() else None
+    account_mode = request.headers.get("x-account-mode") or request.headers.get("X-Account-Mode") or ACCOUNT_MODE
+    if not access_token or not client_id or not client_secret:
+        return {}
+    return {
+        "access_token": access_token,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "ctid_trader_account_id": ctid_trader_account_id,
+        "account_mode": account_mode,
+    }
+
+
+def _stub_account_response():
+    """Return stub account when no credentials available."""
+    return {
+        "account_id": "ctrader-stub",
+        "net_liquidation": 0,
+        "NetLiquidation": 0,
+        "currency": "USD",
+        "total_cash_value": 0,
+        "TotalCashValue": 0,
+        "buying_power": 0,
+        "BuyingPower": 0,
+        "maintenance_margin": 0,
+        "MaintMarginReq": 0,
+        "last_updated": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @app.get("/account/summary")
-async def account_summary():
-    """Account summary - aligned with ib_service response format"""
-    if not connection_status["connected"]:
-        return {
-            "account_id": "ctrader-stub",
-            "net_liquidation": 0,
-            "NetLiquidation": 0,
-            "currency": "USD",
-            "total_cash_value": 0,
-            "TotalCashValue": 0,
-            "buying_power": 0,
-            "BuyingPower": 0,
-            "maintenance_margin": 0,
-            "MaintMarginReq": 0,
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        }
-    # TODO: Call ProtoOAGetAccountListReq / cash flow via ctrader-open-api
-    raise HTTPException(status_code=501, detail="Real cTrader account API not yet implemented")
+async def account_summary(request: Request):
+    """
+    Account summary - C4: real ProtoOA implementation.
+    Pass credentials via headers: X-Access-Token, X-Client-Id, X-Client-Secret, etc.
+    """
+    import asyncio
+    from protooa_client import fetch_account_summary
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        return _stub_account_response()
+    try:
+        result = await asyncio.to_thread(
+            fetch_account_summary,
+            client_id=cred["client_id"],
+            client_secret=cred["client_secret"],
+            access_token=cred["access_token"],
+            ctid_trader_account_id=cred["ctid_trader_account_id"],
+            account_mode=cred["account_mode"],
+        )
+        result["last_updated"] = datetime.now(timezone.utc).isoformat()
+        return result
+    except Exception as e:
+        logger.exception("ProtoOA account summary failed")
+        raise HTTPException(status_code=502, detail=f"Account fetch failed: {e}")
+
 
 
 @app.get("/account/positions")
-async def account_positions():
-    """Positions - aligned with ib_service"""
-    if not connection_status["connected"]:
+async def account_positions(request: Request):
+    """C5: Positions via ProtoOAReconcileReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_positions, fetch_symbols_list
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
         return []
-    # TODO: ProtoOAGetPositionListReq
-    raise HTTPException(status_code=501, detail="Real cTrader positions API not yet implemented")
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
+        positions = await asyncio.to_thread(
+            fetch_positions,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id_to_name=sid_to_name,
+        )
+        return [_position_to_ib_format(p) for p in positions]
+    except Exception as e:
+        logger.exception("ProtoOA positions failed")
+        raise HTTPException(status_code=502, detail=f"Positions fetch failed: {e}")
+
+
+def _position_to_ib_format(p: dict) -> dict:
+    """Map cTrader position to ib_service format."""
+    return {
+        "symbol": p.get("symbol", ""),
+        "position": p.get("position", 0),
+        "average_cost": p.get("price", 0),
+        "market_price": p.get("price"),
+        "unrealized_pnl": None,
+        "realized_pnl": None,
+        "sec_type": "CASH",
+        "currency": "USD",
+    }
 
 
 @app.get("/account/orders")
-async def account_orders():
-    """Open orders - aligned with ib_service"""
-    if not connection_status["connected"]:
+async def account_orders(request: Request):
+    """C6: Orders via ProtoOAReconcileReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_orders, fetch_symbols_list
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
         return []
-    # TODO: ProtoOAGetOrderListReq
-    raise HTTPException(status_code=501, detail="Real cTrader orders API not yet implemented")
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
+        orders = await asyncio.to_thread(
+            fetch_orders,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id_to_name=sid_to_name,
+        )
+        return [_order_to_ib_format(o) for o in orders]
+    except Exception as e:
+        logger.exception("ProtoOA orders failed")
+        raise HTTPException(status_code=502, detail=f"Orders fetch failed: {e}")
+
+
+def _order_to_ib_format(o: dict) -> dict:
+    """Map cTrader order to ib_service format."""
+    side = "BUY" if (o.get("trade_side", 1) == 1) else "SELL"
+    return {
+        "order_id": o.get("order_id", 0),
+        "symbol": o.get("symbol", ""),
+        "action": side,
+        "quantity": o.get("volume", 0),
+        "order_type": "Market",
+        "status": "Pending",
+        "filled_quantity": 0,
+        "remaining_quantity": o.get("volume", 0),
+    }
 
 
 @app.get("/account/all")
-async def account_all():
+async def account_all(request: Request):
     """All account data in one call"""
-    summary = await account_summary()
-    positions = await account_positions()
-    orders = await account_orders()
+    summary = await account_summary(request)
+    positions = await account_positions(request)
+    orders = await account_orders(request)
     return {
         "account": summary,
         "positions": positions,
@@ -297,16 +493,60 @@ async def account_all():
 
 
 # =============================================================================
-# Orders (stub)
+# Orders (C6: ProtoOANewOrderReq, ProtoOACancelOrderReq)
 # =============================================================================
 
 @app.post("/orders/place")
-async def orders_place(req: PlaceOrderRequest):
-    """Place order - aligned with ib_service /orders/place"""
-    if not connection_status["connected"]:
-        raise HTTPException(status_code=503, detail="cTrader not connected. Complete OAuth flow first.")
-    # TODO: ProtoOANewOrderReq
-    raise HTTPException(status_code=501, detail="Real cTrader order API not yet implemented")
+async def orders_place(request: Request, req: PlaceOrderRequest):
+    """C6: Place order via ProtoOANewOrderReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_symbols_list, place_order
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        raise HTTPException(status_code=401, detail="Credentials required (X-Access-Token, X-Client-Id, X-Client-Secret)")
+    sym_clean = (req.symbol or "").replace(".", "").replace("/", "").replace("#", "").upper()
+    if not sym_clean:
+        raise HTTPException(status_code=400, detail="symbol is required")
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        symbol_id = None
+        for s in symbols:
+            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
+            if name == sym_clean or sym_clean in name or name in sym_clean:
+                symbol_id = s["symbol_id"]
+                break
+        if symbol_id is None:
+            raise HTTPException(status_code=404, detail=f"Symbol not found: {req.symbol}")
+        result = await asyncio.to_thread(
+            place_order,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id=symbol_id,
+            action=req.action,
+            quantity=req.quantity,
+            order_type=req.order_type or "MARKET",
+            limit_price=req.limit_price,
+            stop_price=req.stop_price,
+        )
+        return {
+            "success": result.get("success", True),
+            "order_id": result.get("order_id", 0),
+            "symbol": req.symbol,
+            "action": req.action,
+            "quantity": req.quantity,
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("ProtoOA place order failed")
+        raise HTTPException(status_code=502, detail=f"Place order failed: {e}")
 
 
 class CancelOrderRequest(BaseModel):
@@ -314,13 +554,28 @@ class CancelOrderRequest(BaseModel):
 
 
 @app.post("/orders/cancel")
-async def orders_cancel(req: CancelOrderRequest):
-    """Cancel order - expects { order_id: number } in body"""
-    order_id = req.order_id
-    if not connection_status["connected"]:
-        raise HTTPException(status_code=503, detail="cTrader not connected")
-    # TODO: ProtoOACancelOrderReq
-    raise HTTPException(status_code=501, detail="Real cTrader cancel API not yet implemented")
+async def orders_cancel(request: Request, req: CancelOrderRequest):
+    """C6: Cancel order via ProtoOACancelOrderReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import cancel_order
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        raise HTTPException(status_code=401, detail="Credentials required (X-Access-Token, X-Client-Id, X-Client-Secret)")
+    try:
+        result = await asyncio.to_thread(
+            cancel_order,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            order_id=req.order_id,
+        )
+        return {
+            "success": result.get("success", True),
+            "order_id": req.order_id,
+        }
+    except Exception as e:
+        logger.exception("ProtoOA cancel order failed")
+        raise HTTPException(status_code=502, detail=f"Cancel order failed: {e}")
 
 
 # =============================================================================
@@ -329,6 +584,7 @@ async def orders_cancel(req: CancelOrderRequest):
 
 @app.get("/market-data/history")
 async def market_data_history(
+    request: Request,
     symbol: str,
     timeframe: str = "5min",
     period: str = "1M",
@@ -339,32 +595,107 @@ async def market_data_history(
     currency: str = "USD",
     account_mode: str = "paper"
 ):
-    """Historical OHLCV - aligned with ib_service"""
-    # TODO: ProtoOAGetTrendbarsReq - requires connected session
-    # Return empty bars when not connected (allows health check / connectivity test)
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "period": period,
-        "bars": [],
-        "data": [],
-        "count": 0,
-        "last_updated": datetime.now(timezone.utc).isoformat()
-    }
+    """C7: Historical OHLCV via ProtoOAGetTrendbarsReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_symbols_list, fetch_trendbars
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        return {"symbol": symbol, "timeframe": timeframe, "bars": [], "data": [], "count": 0}
+    sym_clean = symbol.replace(".", "").replace("/", "").replace("#", "").upper()
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        symbol_id = None
+        for s in symbols:
+            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
+            if name == sym_clean or sym_clean in name or name in sym_clean:
+                symbol_id = s["symbol_id"]
+                break
+        if symbol_id is None:
+            return {"symbol": symbol, "timeframe": timeframe, "bars": [], "data": [], "count": 0}
+        to_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+        from_ts = to_ts - (30 * 24 * 60 * 60 * 1000)  # 30 days back
+        if start_date:
+            try:
+                from_ts = int(datetime.fromisoformat(start_date.replace("Z", "+00:00")).timestamp() * 1000)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                to_ts = int(datetime.fromisoformat(end_date.replace("Z", "+00:00")).timestamp() * 1000)
+            except Exception:
+                pass
+        bars = await asyncio.to_thread(
+            fetch_trendbars,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id=symbol_id,
+            timeframe=timeframe,
+            from_timestamp_ms=from_ts,
+            to_timestamp_ms=to_ts,
+            count=500,
+        )
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "period": period,
+            "bars": bars,
+            "data": bars,
+            "count": len(bars),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.exception("ProtoOA history failed")
+        raise HTTPException(status_code=502, detail=f"History fetch failed: {e}")
 
 
 @app.get("/market-data/realtime")
-async def market_data_realtime(symbol: str, account_mode: str = "paper"):
-    """Real-time quote - aligned with ib_service"""
-    # TODO: ProtoOASubscribeSpotsReq + spot updates
-    return {
-        "symbol": symbol,
-        "bid": None,
-        "ask": None,
-        "last": None,
-        "volume": None,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+async def market_data_realtime(request: Request, symbol: str, account_mode: str = "paper"):
+    """C8: Real-time quote via ProtoOASubscribeSpotsReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_symbols_list, fetch_spot
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        return {"symbol": symbol, "bid": None, "ask": None, "last": None, "volume": None}
+    sym_clean = symbol.replace(".", "").replace("/", "").replace("#", "").upper()
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        symbol_id = None
+        for s in symbols:
+            name = (s.get("name") or "").replace("/", "").replace(".", "").upper()
+            if name == sym_clean or sym_clean in name or name in sym_clean:
+                symbol_id = s["symbol_id"]
+                break
+        if symbol_id is None:
+            return {"symbol": symbol, "bid": None, "ask": None, "last": None, "volume": None}
+        spot = await asyncio.to_thread(
+            fetch_spot,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id=symbol_id,
+        )
+        mid = (spot.get("bid", 0) + spot.get("ask", 0)) / 2 if (spot.get("bid") and spot.get("ask")) else spot.get("bid") or spot.get("ask")
+        return {
+            "symbol": symbol,
+            "bid": spot.get("bid"),
+            "ask": spot.get("ask"),
+            "last": mid,
+            "volume": None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.exception("ProtoOA realtime failed")
+        raise HTTPException(status_code=502, detail=f"Realtime fetch failed: {e}")
+
 
 
 # =============================================================================
@@ -372,17 +703,49 @@ async def market_data_realtime(symbol: str, account_mode: str = "paper"):
 # =============================================================================
 
 @app.post("/contract/search")
-async def contract_search(req: SearchRequest):
-    """Symbol search - aligned with ib_service /contract/search"""
-    # TODO: ProtoOAGetSymbolsListReq / symbol search
-    # Return empty when not connected
-    return {"results": []}
+async def contract_search(request: Request, req: SearchRequest):
+    """C9: Symbol search via ProtoOASymbolsListReq. Pass credentials via headers."""
+    import asyncio
+    from protooa_client import fetch_symbols_list
+
+    cred = _get_credentials_from_request(request)
+    if not cred:
+        return {"results": []}
+    try:
+        symbols = await asyncio.to_thread(
+            fetch_symbols_list,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+        )
+        query = (req.symbol or "").upper().strip()
+        results = []
+        for s in symbols:
+            name = (s.get("name") or "").upper()
+            if not query or query in name or name in query:
+                results.append({
+                    "symbol": s.get("name", ""),
+                    "symbolId": s["symbol_id"],
+                    "secType": "CASH",
+                    "exchange": "",
+                    "currency": "USD",
+                    "description": s.get("display_name", ""),
+                })
+        return {"results": results[:100]}
+    except Exception as e:
+        logger.exception("ProtoOA contract search failed")
+        raise HTTPException(status_code=502, detail=f"Search failed: {e}")
 
 
 @app.post("/contract/advanced-search")
-async def contract_advanced_search(req: dict):
-    """Advanced symbol search"""
-    return {"results": []}
+async def contract_advanced_search(request: Request, req: dict):
+    """C9: Advanced symbol search - same as search, filters by symbol from body."""
+    return await contract_search(request, SearchRequest(
+        symbol=req.get("symbol", ""),
+        secType=req.get("secType", "CASH"),
+        exchange=req.get("exchange"),
+        currency=req.get("currency"),
+        name=req.get("name", False),
+    ))
 
 
 # =============================================================================
