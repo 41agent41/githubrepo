@@ -519,7 +519,8 @@ def _order_to_ib_format(o: dict) -> dict:
 
 @app.get("/account/all")
 async def account_all(request: Request):
-    """All account data – summary + single reconcile for positions & orders."""
+    """All account data – summary + single reconcile for positions & orders.
+    Runs sequentially because cTrader rejects concurrent auth for the same account."""
     import asyncio
     from protooa_client import fetch_account_summary, fetch_reconcile
 
@@ -534,19 +535,18 @@ async def account_all(request: Request):
         symbols = await _fetch_symbols_cached(cred)
         sid_to_name = {s["symbol_id"]: s.get("name", "") for s in symbols}
 
-        summary_data, recon_data = await asyncio.gather(
-            asyncio.to_thread(
-                fetch_account_summary,
-                cred["client_id"], cred["client_secret"], cred["access_token"],
-                cred["ctid_trader_account_id"], cred["account_mode"],
-            ),
-            asyncio.to_thread(
-                fetch_reconcile,
-                cred["client_id"], cred["client_secret"], cred["access_token"],
-                cred["ctid_trader_account_id"], cred["account_mode"],
-                symbol_id_to_name=sid_to_name,
-            ),
+        summary_data = await asyncio.to_thread(
+            fetch_account_summary,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
         )
+        recon_data = await asyncio.to_thread(
+            fetch_reconcile,
+            cred["client_id"], cred["client_secret"], cred["access_token"],
+            cred["ctid_trader_account_id"], cred["account_mode"],
+            symbol_id_to_name=sid_to_name,
+        )
+
         summary_data["last_updated"] = datetime.now(timezone.utc).isoformat()
         return {
             "account": summary_data,
