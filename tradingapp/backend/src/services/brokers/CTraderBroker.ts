@@ -586,6 +586,19 @@ export class CTraderBrokerService extends BaseBrokerService {
     };
   }
 
+  async getAccountData(): Promise<{
+    account: BrokerAccountSummary;
+    positions: BrokerPosition[];
+    orders: BrokerOrder[];
+  }> {
+    // cTrader rejects concurrent authenticated connections for the same account,
+    // so we must run these sequentially instead of using Promise.all.
+    const account = await this.getAccountSummary();
+    const positions = await this.getPositions();
+    const orders = await this.getOrders();
+    return { account, positions, orders };
+  }
+
   setAccountMode(mode: AccountMode): void {
     this.currentAccountMode = mode;
   }
